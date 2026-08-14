@@ -1,0 +1,9 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0
+# SUMMARIZEDEXPERIMENT_SUMMARIZEDEXPERIMENT module environment
+# (modules/nf-core/summarizedexperiment/summarizedexperiment/environment.yml).
+name: summarizedexperiment
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::bioconductor-summarizedexperiment=1.32.0

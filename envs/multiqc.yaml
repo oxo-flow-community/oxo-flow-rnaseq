@@ -1,0 +1,12 @@
+# Environment for MultiQC and the workflow-level custom-content script —
+# pinned exactly to the upstream nf-core/rnaseq 3.26.0 module environment
+# (modules/nf-core/multiqc/environment.yml). python is pinned so the custom
+# content script (scripts/multiqc_custom_content.py) runs on a known
+# interpreter; pyyaml is a MultiQC dependency.
+name: multiqc
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - conda-forge::python=3.12.12
+  - bioconda::multiqc=1.33

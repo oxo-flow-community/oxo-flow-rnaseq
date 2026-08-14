@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 TXIMETA_TXIMPORT module
+# environment (modules/nf-core/tximeta/tximport/environment.yml).
+name: tximeta
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::bioconductor-tximeta=1.20.1

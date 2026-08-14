@@ -1,0 +1,357 @@
+# BAM QC fragment: nf-core/rnaseq BAM_QC_RNASEQ (featureCounts + biotype
+# MultiQC table, RSeQC, dupRadar, Qualimap) — default path.
+#
+# Rule -> upstream process (label: cpus/memory/time):
+#   featurecounts            SUBREAD_FEATURECOUNTS  (process_medium: 6/36G/8h)
+#   biotype_multiqc          CUSTOM_MULTIQCCUSTOMBIOTYPE (process_single: 1/6G/4h)
+#   rseqc_bam_stat .. _read_duplication: RSEQC_*  (process_medium: 6/36G/8h)
+#   dupradar                 DUPRADAR               (process_long: 1/6G/20h)
+#   samtools_sort_qualimap   SAMTOOLS_SORT_QUALIMAP (process_medium: 6/36G/8h)
+#   qualimap_rnaseq          QUALIMAP_RNASEQ        (process_medium: 6/36G/8h)
+#
+# All rules gate on !config.skip_qc (upstream: --skip_qc). RSeQC output names
+# and pdf locations were verified against the RSeQC 5.0.4 source:
+# inner_distance / read_duplication embed the full -o prefix path in their
+# R scripts (pdfs land next to the -o prefix); junction_annotation /
+# junction_saturation write their pdfs to the working directory
+# (splicing_events_pie.pdf, splicing_junction_pie.pdf, junction_saturation.pdf)
+# so they are renamed into the results layout below.
+
+[workflow]
+name = "bam_qc"
+description = "Post-alignment QC: featureCounts gene counts, biotype MultiQC table, RSeQC modules, dupRadar, Qualimap"
+
+# SUBREAD_FEATURECOUNTS:
+#   featureCounts -B -C -g <group_type> -t <feature_type> -p -T 6 -a <gtf>
+#                 -s <0|1|2> -o <id>.featureCounts.tsv <bam>
+# (strandedness: forward -> 1, reverse -> 2, else 0; -p because paired-end)
+[[rules]]
+name = "featurecounts"
+description = "Gene counts with featureCounts (nf-core SUBREAD_FEATURECOUNTS, -B -C, strandedness from config)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/star_salmon/featurecounts/{sample}.featureCounts.tsv",
+    "{config.out_dir}/star_salmon/featurecounts/{sample}.featureCounts.tsv.summary",
+]
+shell = """
+case "{config.strandedness}" in
+    forward) S=1;;
+    reverse) S=2;;
+    *) S=0;;
+esac
+featureCounts -B -C -g {config.featurecounts_group_type} -t {config.featurecounts_feature_type} -p -T 6 -a {input[1]} -s $S -o {output[0]} {input[0]}
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/subread.yaml"
+
+# CUSTOM_MULTIQCCUSTOMBIOTYPE (template scripts/mqc_features_stat.py ported
+# from modules/nf-core/custom/multiqccustombiotype/templates/mqc_features_stat.py)
+[[rules]]
+name = "biotype_multiqc"
+description = "Biotype counts for MultiQC (nf-core CUSTOM_MULTIQCCUSTOMBIOTYPE)"
+input = [
+    "{config.out_dir}/star_salmon/featurecounts/{sample}.featureCounts.tsv",
+    "assets/multiqc/biotypes_header.txt",
+]
+output = [
+    "{config.out_dir}/star_salmon/featurecounts/{sample}.biotype_counts_mqc.tsv",
+    "{config.out_dir}/star_salmon/featurecounts/{sample}.biotype_counts_rrna_mqc.tsv",
+]
+shell = """
+python scripts/mqc_features_stat.py {input[0]} {input[1]} {sample} {config.out_dir}/star_salmon/featurecounts
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/biotype.yaml"
+
+# RSEQC_BAMSTAT: bam_stat.py -i <markdup.bam> > <id>.bam_stat.txt
+[[rules]]
+name = "rseqc_bam_stat"
+description = "BAM statistics with RSeQC (nf-core RSEQC_BAMSTAT)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+]
+output = ["{config.out_dir}/star_salmon/rseqc/bam_stat/{sample}.bam_stat.txt"]
+shell = """
+bam_stat.py -i {input[0]} > {output[0]}
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+# RSEQC_INFEREXPERIMENT: infer_experiment.py -i <bam> -r <gene.bed> > <id>.infer_experiment.txt
+[[rules]]
+name = "rseqc_infer_experiment"
+description = "Infer library strandedness with RSeQC (nf-core RSEQC_INFEREXPERIMENT)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.gene_bed}",
+]
+output = ["{config.out_dir}/star_salmon/rseqc/infer_experiment/{sample}.infer_experiment.txt"]
+shell = """
+infer_experiment.py -i {input[0]} -r {input[2]} > {output[0]}
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+# RSEQC_INNERDISTANCE: inner_distance.py -i <bam> -r <gene.bed> -o <prefix>;
+# the CLI redirects its own stdout to stdout.txt then runs
+#   head -n 2 stdout.txt > <prefix>.inner_distance_mean.txt
+[[rules]]
+name = "rseqc_inner_distance"
+description = "Insert-size distribution with RSeQC (nf-core RSEQC_INNERDISTANCE)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.gene_bed}",
+]
+output = [
+    "{config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance.txt",
+    "{config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance_freq.txt",
+    "{config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance_mean.txt",
+    "{config.out_dir}/star_salmon/rseqc/inner_distance/pdf/{sample}.inner_distance_plot.pdf",
+    "{config.out_dir}/star_salmon/rseqc/inner_distance/rscript/{sample}.inner_distance_plot.r",
+]
+shell = """
+inner_distance.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/inner_distance/{sample} > stdout.txt
+head -n 2 stdout.txt > {config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance_mean.txt
+rm -f stdout.txt
+mv {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance.txt {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance_freq.txt {config.out_dir}/star_salmon/rseqc/inner_distance/txt/
+mv {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance_plot.r {config.out_dir}/star_salmon/rseqc/inner_distance/rscript/
+mv {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance_plot.pdf {config.out_dir}/star_salmon/rseqc/inner_distance/pdf/
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+# RSEQC_JUNCTIONANNOTATION: junction_annotation.py -i <bam> -r <gene.bed> -o
+# <prefix>; the CLI runs Rscript <prefix>.junction_plot.r internally (pdfs go
+# to the CWD: splicing_events_pie.pdf / splicing_junction_pie.pdf) and
+# generate_bed12 writes <prefix>.junction.bed from <prefix>.junction.xls.
+# Stderr is filtered for the htslib E::idx_find_and_load noise like the
+# upstream module.
+[[rules]]
+name = "rseqc_junction_annotation"
+description = "Annotate splicing junctions with RSeQC (nf-core RSEQC_JUNCTIONANNOTATION)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.gene_bed}",
+]
+output = [
+    "{config.out_dir}/star_salmon/rseqc/junction_annotation/bed/{sample}.junction.bed",
+    "{config.out_dir}/star_salmon/rseqc/junction_annotation/log/{sample}.junction_annotation.log",
+    "{config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf",
+    "{config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf",
+    "{config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/{sample}.junction_plot.r",
+    "{config.out_dir}/star_salmon/rseqc/junction_annotation/xls/{sample}.junction.xls",
+]
+shell = """
+junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_annotation.log >&2)
+mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.xls {config.out_dir}/star_salmon/rseqc/junction_annotation/xls/
+mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.bed {config.out_dir}/star_salmon/rseqc/junction_annotation/bed/
+mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_plot.r {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/
+mv splicing_events_pie.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
+mv splicing_junction_pie.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+# RSEQC_JUNCTIONSATURATION: junction_saturation.py -i <bam> -r <gene.bed> -o
+# <prefix>; the R script writes junction_saturation.pdf to the CWD.
+[[rules]]
+name = "rseqc_junction_saturation"
+description = "Junction saturation with RSeQC (nf-core RSEQC_JUNCTIONSATURATION)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.gene_bed}",
+]
+output = [
+    "{config.out_dir}/star_salmon/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf",
+    "{config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r",
+]
+shell = """
+junction_saturation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}
+mv {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}.junctionSaturation_plot.r {config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/
+mv junction_saturation.pdf {config.out_dir}/star_salmon/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+# RSEQC_READDISTRIBUTION: read_distribution.py -i <bam> -r <gene.bed> > <id>.read_distribution.txt
+[[rules]]
+name = "rseqc_read_distribution"
+description = "Read distribution across gene features with RSeQC (nf-core RSEQC_READDISTRIBUTION)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.gene_bed}",
+]
+output = ["{config.out_dir}/star_salmon/rseqc/read_distribution/{sample}.read_distribution.txt"]
+shell = """
+read_distribution.py -i {input[0]} -r {input[2]} > {output[0]}
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+# RSEQC_READDUPLICATION: read_duplication.py -i <bam> -o <prefix>; the R
+# script embeds the full -o prefix path in pdf() so the pdf lands next to the
+# -o prefix (verified in RSeQC 5.0.4 qcmodule/SAM.py).
+[[rules]]
+name = "rseqc_read_duplication"
+description = "Read duplication rate with RSeQC (nf-core RSEQC_READDUPLICATION)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+]
+output = [
+    "{config.out_dir}/star_salmon/rseqc/read_duplication/pdf/{sample}.DupRate_plot.pdf",
+    "{config.out_dir}/star_salmon/rseqc/read_duplication/rscript/{sample}.DupRate_plot.r",
+    "{config.out_dir}/star_salmon/rseqc/read_duplication/xls/{sample}.pos.DupRate.xls",
+    "{config.out_dir}/star_salmon/rseqc/read_duplication/xls/{sample}.seq.DupRate.xls",
+]
+shell = """
+read_duplication.py -i {input[0]} -o {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}
+mv {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.seq.DupRate.xls {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.pos.DupRate.xls {config.out_dir}/star_salmon/rseqc/read_duplication/xls/
+mv {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.DupRate_plot.r {config.out_dir}/star_salmon/rseqc/read_duplication/rscript/
+mv {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.DupRate_plot.pdf {config.out_dir}/star_salmon/rseqc/read_duplication/pdf/
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+# DUPRADAR (template scripts/dupradar.r, ported from
+# modules/nf-core/dupradar/templates/dupradar.r; inputs via env vars so the
+# MultiQC sample name stays the plain sample id). PREFIX is the bare sample
+# id (like the upstream ext.prefix) so the *_mqc.txt files embed "<id>",
+# then everything is moved into the results layout.
+[[rules]]
+name = "dupradar"
+description = "Duplicate rate analysis with dupRadar (nf-core DUPRADAR)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/star_salmon/dupradar/box_plot/{sample}_duprateExpBoxplot.pdf",
+    "{config.out_dir}/star_salmon/dupradar/gene_data/{sample}_dupMatrix.txt",
+    "{config.out_dir}/star_salmon/dupradar/histogram/{sample}_expressionHist.pdf",
+    "{config.out_dir}/star_salmon/dupradar/intercepts_slope/{sample}_intercept_slope.txt",
+    "{config.out_dir}/star_salmon/dupradar/multiqc/{sample}_dup_intercept_mqc.txt",
+    "{config.out_dir}/star_salmon/dupradar/multiqc/{sample}_duprateExpDensCurve_mqc.txt",
+    "{config.out_dir}/star_salmon/dupradar/scatter_plot/{sample}_duprateExpDens.pdf",
+    "{config.out_dir}/star_salmon/dupradar/{sample}.R_sessionInfo.log",
+]
+shell = """
+export BAM={input[0]}
+export GTF={input[1]}
+export PREFIX={sample}
+export THREADS=1
+case "{config.strandedness}" in
+    forward) export STRANDED=1;;
+    reverse) export STRANDED=2;;
+    *) export STRANDED=0;;
+esac
+export PAIRED=true
+Rscript scripts/dupradar.r
+mv {sample}_dupMatrix.txt {config.out_dir}/star_salmon/dupradar/gene_data/
+mv {sample}_duprateExpDens.pdf {config.out_dir}/star_salmon/dupradar/scatter_plot/
+mv {sample}_duprateExpBoxplot.pdf {config.out_dir}/star_salmon/dupradar/box_plot/
+mv {sample}_expressionHist.pdf {config.out_dir}/star_salmon/dupradar/histogram/
+mv {sample}_intercept_slope.txt {config.out_dir}/star_salmon/dupradar/intercepts_slope/
+mv {sample}_dup_intercept_mqc.txt {sample}_duprateExpDensCurve_mqc.txt {config.out_dir}/star_salmon/dupradar/multiqc/
+mv {sample}.R_sessionInfo.log {config.out_dir}/star_salmon/dupradar/
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 1
+memory = "6G"
+time_limit = "20h"
+[rules.environment]
+conda = "envs/dupradar.yaml"
+
+# SAMTOOLS_SORT_QUALIMAP: samtools cat <markdup> | samtools sort -n -T <id>.namesorted --threads 6 --reference <fasta> -o <id>.namesorted.bam -
+[[rules]]
+name = "samtools_sort_qualimap"
+description = "Name-sort markdup BAM for Qualimap (nf-core SAMTOOLS_SORT_QUALIMAP, prefix <id>.namesorted)"
+input = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/star_salmon/qualimap/{sample}.namesorted.bam"]
+shell = """
+samtools cat {input[0]} | samtools sort -n -T {sample}.namesorted --threads 6 --reference {config.fasta} -o {output[0]} -
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# QUALIMAP_RNASEQ: unset DISPLAY; mkdir -p tmp; export _JAVA_OPTIONS=-Djava.io.tmpdir=./tmp;
+#   qualimap --java-mem-size=29491M rnaseq --sorted -bam <namesorted> -gtf <gtf>
+#            -p <strand> -pe -outdir <id>
+# (-Xmx = 36G * 0.8 = 29491M; strand: forward -> strand-specific-forward,
+# reverse -> strand-specific-reverse, else non-strand-specific)
+[[rules]]
+name = "qualimap_rnaseq"
+description = "Qualimap RNA-seq QC (nf-core QUALIMAP_RNASEQ, --sorted, -Xmx29491M)"
+input = [
+    "{config.out_dir}/star_salmon/qualimap/{sample}.namesorted.bam",
+    "{config.gtf}",
+]
+output = ["{config.out_dir}/star_salmon/qualimap/{sample}/rnaseq_qc_results.txt"]
+shell = """
+unset DISPLAY
+mkdir -p tmp
+export _JAVA_OPTIONS=-Djava.io.tmpdir=./tmp
+case "{config.strandedness}" in
+    forward) P=strand-specific-forward;;
+    reverse) P=strand-specific-reverse;;
+    *) P=non-strand-specific;;
+esac
+rm -rf {config.out_dir}/star_salmon/qualimap/{sample}
+qualimap --java-mem-size=29491M rnaseq --sorted -bam {input[0]} -gtf {input[1]} -p $P -pe -outdir {config.out_dir}/star_salmon/qualimap/{sample}
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/qualimap.yaml"

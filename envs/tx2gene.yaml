@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 CUSTOM_TX2GENE module
+# environment (modules/nf-core/custom/tx2gene/environment.yml).
+name: tx2gene
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10.4

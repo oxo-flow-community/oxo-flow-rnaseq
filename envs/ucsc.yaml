@@ -1,0 +1,10 @@
+# Environment for bedClip and bedGraphToBigWig — pinned exactly to the
+# upstream nf-core/rnaseq 3.26.0 module environments
+# (modules/nf-core/ucsc/bedclip + bedgraphtobigwig/environment.yml).
+name: ucsc
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::ucsc-bedclip=377
+  - bioconda::ucsc-bedgraphtobigwig=469

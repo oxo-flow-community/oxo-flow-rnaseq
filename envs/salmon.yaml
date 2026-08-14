@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 SALMON_QUANT module
+# environment (modules/nf-core/salmon/quant/environment.yml).
+name: salmon
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::salmon=1.10.3

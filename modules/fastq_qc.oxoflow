@@ -1,0 +1,115 @@
+# Read QC fragment: nf-core/rnaseq FASTQ_FASTQC_UMITOOLS_TRIMGALORE +
+# FQ_LINT / FQ_LINT_AFTER_TRIMMING (default path, no UMI extraction).
+#
+# Rule -> upstream process (label: cpus/memory/time):
+#   fq_lint_raw        FQ_LINT                (process_low: 2/12G/4h)
+#   fastqc_raw         FASTQC                 (process_low: 2/12G/4h)
+#   trimgalore         TRIMGALORE             (process_medium+low_memory: 8/1G/8h)
+#   fq_lint_trimmed    FQ_LINT_AFTER_TRIMMING (process_low: 2/12G/4h)
+#
+# The per-sample min_trimmed_reads gate (reads below the threshold are dropped
+# from the downstream chain) is a data-dependent workflow filter and is NOT
+# ported — see README fidelity table.
+
+[workflow]
+name = "fastq_qc"
+description = "Read QC: fq lint on raw reads, FastQC, TrimGalore trimming with internal FastQC, fq lint on trimmed reads"
+
+# FQ_LINT: fq lint <extra_fqlint_args> <R1> <R2> > <id>.fq_lint.txt
+[[rules]]
+name = "fq_lint_raw"
+description = "Lint raw FASTQs with fq (nf-core FQ_LINT, --disable-validator P001)"
+input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+output = ["{config.out_dir}/fq_lint/raw/{sample}.fq_lint.txt"]
+shell = """
+fq lint {config.extra_fqlint_args} {input[0]} {input[1]} > {output[0]}
+"""
+when = "!config.skip_linting"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fq.yaml"
+
+# FASTQC: symlink raw reads to <id>_raw_1/2.fastq.gz then
+#   fastqc --quiet --threads 2 --memory 6000 <renamed>
+# (memory 6000 = label 12G / 2 cpus, clamped to [100, 10000]).
+[[rules]]
+name = "fastqc_raw"
+description = "FastQC on raw reads (nf-core FASTQC, prefix <id>_raw, --quiet --memory 6000)"
+input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+output = [
+    "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.html",
+    "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.zip",
+    "{config.out_dir}/fastqc/raw/{sample}_raw_2_fastqc.html",
+    "{config.out_dir}/fastqc/raw/{sample}_raw_2_fastqc.zip",
+]
+shell = """
+printf "%s %s\\n" {input[0]} {sample}_raw_1.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+printf "%s %s\\n" {input[1]} {sample}_raw_2.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+fastqc --quiet --threads 2 --memory 6000 {sample}_raw_1.fastq.gz {sample}_raw_2.fastq.gz
+mv {sample}_raw_1_fastqc.html {sample}_raw_1_fastqc.zip {config.out_dir}/fastqc/raw/
+mv {sample}_raw_2_fastqc.html {sample}_raw_2_fastqc.zip {config.out_dir}/fastqc/raw/
+"""
+when = "!config.skip_fastqc"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fastqc.yaml"
+
+# TRIMGALORE (PE branch): symlink to <id>_trimmed_1/2.fastq.gz, then
+#   trim_galore --fastqc_args '-t 8' --cores 4 --paired --gzip <prefix>_1 <prefix>_2
+# (cores = cpus - 4 = 4; -t 8 = task.cpus; --fastqc_args from upstream ext.args).
+[[rules]]
+name = "trimgalore"
+description = "Adapter trimming with TrimGalore (nf-core TRIMGALORE PE branch, internal FastQC, prefix <id>_trimmed)"
+input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+output = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_1_val_1_fastqc.html",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_1_val_1_fastqc.zip",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_2_val_2_fastqc.html",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_2_val_2_fastqc.zip",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1.fastq.gz_trimming_report.txt",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2.fastq.gz_trimming_report.txt",
+]
+shell = """
+[ ! -f {sample}_trimmed_1.fastq.gz ] && ln -s {input[0]} {sample}_trimmed_1.fastq.gz
+[ ! -f {sample}_trimmed_2.fastq.gz ] && ln -s {input[1]} {sample}_trimmed_2.fastq.gz
+trim_galore --fastqc_args '-t 8' --cores 4 --paired --gzip {sample}_trimmed_1.fastq.gz {sample}_trimmed_2.fastq.gz
+mv {sample}_trimmed_1_val_1.fq.gz {sample}_trimmed_2_val_2.fq.gz {config.out_dir}/trimgalore/
+mv {sample}_trimmed_1.fastq.gz_trimming_report.txt {sample}_trimmed_2.fastq.gz_trimming_report.txt {config.out_dir}/trimgalore/
+mv {sample}_trimmed_1_val_1_fastqc.html {sample}_trimmed_1_val_1_fastqc.zip {config.out_dir}/fastqc/trim/
+mv {sample}_trimmed_2_val_2_fastqc.html {sample}_trimmed_2_val_2_fastqc.zip {config.out_dir}/fastqc/trim/
+"""
+when = "!config.skip_trimming"
+[rules.resources]
+threads = 8
+memory = "1G"
+[rules.environment]
+conda = "envs/trimgalore.yaml"
+
+# FQ_LINT_AFTER_TRIMMING
+[[rules]]
+name = "fq_lint_trimmed"
+description = "Lint trimmed FASTQs with fq (nf-core FQ_LINT_AFTER_TRIMMING)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+]
+output = ["{config.out_dir}/fq_lint/trimmed/{sample}.fq_lint.txt"]
+shell = """
+fq lint {config.extra_fqlint_args} {input[0]} {input[1]} > {output[0]}
+"""
+when = "!config.skip_linting"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fq.yaml"

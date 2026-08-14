@@ -1,0 +1,307 @@
+# Quantification fragment of the nf-core/rnaseq 3.26.0 default path
+# (subworkflows/nf-core/quantify_bam_salmon + quantify_tximport_summarizedexperiment).
+#
+# Upstream process labels: SALMON_QUANT / STRINGTIE_STRINGTIE / TXIMETA_TXIMPORT
+# / SUMMARIZEDEXPERIMENT_* are process_medium (6 cpus, 36G, 8h); CUSTOM_TX2GENE
+# and DESEQ2_QC are process_single (1 cpus, 6G, 4h). Baked into [rules.resources].
+#
+# Rule names are auto-prefixed with the include namespace ("quantification::")
+# by main.oxoflow; depends_on references inside this file resolve to the
+# namespaced, sample-expanded rule names.
+
+[workflow]
+name = "quantification"
+version = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Salmon quantification in alignment mode (modules/nf-core/salmon/quant,
+# alignment_mode = true): quantifies the STAR toTranscriptome BAM against the
+# transcript FASTA with --geneMap <gtf>. libType follows the upstream default
+# logic (strandedness -> ISF/ISR, else IU) unless config.salmon_quant_libtype
+# overrides it. Also publishes meta_info.json / lib_format_counts.json copies
+# next to the output dir like upstream (aux_info/ stays inside the dir).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "salmon_quant"
+description = "Salmon quantification (alignment mode) of the STAR toTranscriptome BAM (nf-core SALMON_QUANT, --geneMap gtf, --libType from strandedness)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.Aligned.toTranscriptome.out.bam",
+    "{config.gtf}",
+    "{config.transcript_fasta}",
+]
+output = [
+    "{config.out_dir}/star_salmon/{sample}/quant.sf",
+    "{config.out_dir}/star_salmon/{sample}/quant.genes.sf",
+    "{config.out_dir}/star_salmon/{sample}/logs/salmon_quant.log",
+]
+shell = """
+case "{config.strandedness}" in
+    forward) LIBTYPE=ISF ;;
+    reverse) LIBTYPE=ISR ;;
+    *) LIBTYPE=IU ;;
+esac
+if [ -n "{config.salmon_quant_libtype}" ]; then
+    LIBTYPE="{config.salmon_quant_libtype}"
+fi
+salmon quant \\
+    --geneMap {input[1]} \\
+    --threads 6 \\
+    --libType=$LIBTYPE \\
+    -t {input[2]} \\
+    -a {input[0]} \\
+    -o {sample}
+if [ -f {sample}/aux_info/meta_info.json ]; then
+    cp {sample}/aux_info/meta_info.json "{sample}_meta_info.json"
+fi
+if [ -f {sample}/lib_format_counts.json ]; then
+    cp {sample}/lib_format_counts.json "{sample}_lib_format_counts.json"
+fi
+mv {sample} {config.out_dir}/star_salmon/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+# ---------------------------------------------------------------------------
+# Transcript-to-gene mapping (modules/nf-core/custom/tx2gene). Upstream runs
+# it on the first sample's quant files to discover which GTF attribute holds
+# transcript IDs; gene_id/gene_name are the nf-core defaults.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "tx2gene"
+description = "Build transcript-to-gene mapping from the GTF (nf-core CUSTOM_TX2GENE, gene_id/gene_name attributes, first sample's quant dir)"
+input = ["{config.gtf}"]
+output = [
+    "{config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv",
+]
+depends_on = ["salmon_quant"]
+shell = """
+FIRST_SAMPLE=$(printf "%s" "{config.samples_list}" | cut -d, -f1)
+python scripts/tx2gene.py \\
+    --quant-dir {config.out_dir}/star_salmon/$FIRST_SAMPLE \\
+    --gtf {input[0]} \\
+    --quant-type salmon \\
+    --gene-id gene_id \\
+    --gene-name gene_name \\
+    --output {output[0]}
+"""
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/tx2gene.yaml"
+
+# ---------------------------------------------------------------------------
+# Cross-sample tximport merge (modules/nf-core/tximeta/tximport, meta.id ==
+# 'all_samples' -> prefix "salmon.merged"). Stage each sample's quant.sf into
+# a quants/<sample>/ layout first (upstream hands MultiQC-style per-sample
+# dirs to tximport, which reads quants/<sample>/quant.sf).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "tximport"
+description = "Cross-sample tximport merge of Salmon quantifications (nf-core TXIMETA_TXIMPORT, prefix salmon.merged: gene + transcript counts/tpm/lengths)"
+input = ["{config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv"]
+expand_inputs = [
+    { pattern = "{config.out_dir}/star_salmon/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
+]
+output = [
+    "{config.out_dir}/star_salmon/salmon.merged.gene_counts.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_tpm.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_lengths.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.transcript_counts.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.transcript_tpm.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.transcript_lengths.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.tx2gene_augmented.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.R_sessionInfo.log",
+]
+when = "!config.skip_quantification_merge"
+shell = """
+rm -rf quants
+mkdir -p quants
+for q in {input}; do
+    case "$q" in
+        */quant.sf)
+            d="quants/$(basename "$(dirname "$q")")"
+            mkdir -p "$d"
+            cp -L "$q" "$d/"
+            ;;
+    esac
+done
+Rscript scripts/tximport.r \\
+    --quants-dir quants \\
+    --tx2gene {input[0]} \\
+    --quant-type salmon \\
+    --prefix salmon.merged
+mv salmon.merged.gene_counts.tsv salmon.merged.gene_tpm.tsv salmon.merged.gene_lengths.tsv \\
+    salmon.merged.gene_counts_scaled.tsv salmon.merged.gene_counts_length_scaled.tsv \\
+    salmon.merged.transcript_counts.tsv salmon.merged.transcript_tpm.tsv salmon.merged.transcript_lengths.tsv \\
+    salmon.merged.tx2gene_augmented.tsv salmon.merged.R_sessionInfo.log \\
+    {config.out_dir}/star_salmon/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/tximeta.yaml"
+
+# ---------------------------------------------------------------------------
+# SummarizedExperiment objects (modules/nf-core/summarizedexperiment/,
+# SE_GENE_UNIFIED / SE_TRANSCRIPT_UNIFIED). The upstream subworkflow runs the
+# same process twice with different prefixes and --assay_names; mirrored here
+# as two Rscript invocations in one rule. Coldata is the samplesheet sample
+# IDs (upstream colData has sample + Group columns; the script drops
+# non-numeric matrix columns so colnames = sample IDs).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "summarizedexperiment"
+description = "Gene- and transcript-level SummarizedExperiment RDS objects (nf-core SUMMARIZEDEXPERIMENT_SUMMARIZEDEXPERIMENT, prefixes salmon.merged.gene / salmon.merged.transcript)"
+input = [
+    "{config.out_dir}/star_salmon/salmon.merged.gene_counts.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_tpm.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_lengths.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.transcript_counts.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.transcript_tpm.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.transcript_lengths.tsv",
+    "{config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv",
+]
+output = [
+    "{config.out_dir}/star_salmon/salmon.merged.gene.SummarizedExperiment.rds",
+    "{config.out_dir}/star_salmon/salmon.merged.transcript.SummarizedExperiment.rds",
+]
+when = "!config.skip_quantification_merge"
+shell = """
+printf "sample\\n" > samples.tsv
+printf "%s" "{config.samples_list}" | tr ',' '\\n' >> samples.tsv
+Rscript scripts/summarizedexperiment.r \\
+    --matrix-files "{config.out_dir}/star_salmon/salmon.merged.gene_counts.tsv {config.out_dir}/star_salmon/salmon.merged.gene_tpm.tsv {config.out_dir}/star_salmon/salmon.merged.gene_lengths.tsv {config.out_dir}/star_salmon/salmon.merged.gene_counts_scaled.tsv {config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv" \\
+    --assay-names counts,counts_length_scaled,counts_scaled,lengths,tpm \\
+    --rowdata {config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv \\
+    --coldata samples.tsv \\
+    --prefix salmon.merged.gene
+Rscript scripts/summarizedexperiment.r \\
+    --matrix-files "{config.out_dir}/star_salmon/salmon.merged.transcript_counts.tsv {config.out_dir}/star_salmon/salmon.merged.transcript_tpm.tsv {config.out_dir}/star_salmon/salmon.merged.transcript_lengths.tsv" \\
+    --assay-names counts,tpm,length \\
+    --rowdata {config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv \\
+    --coldata samples.tsv \\
+    --prefix salmon.merged.transcript
+mv salmon.merged.gene.SummarizedExperiment.rds salmon.merged.transcript.SummarizedExperiment.rds \\
+    {config.out_dir}/star_salmon/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/summarizedexperiment.yaml"
+
+# ---------------------------------------------------------------------------
+# StringTie reference-guided assembly + quantification (modules/nf-core/
+# stringtie/stringtie). Runs on the markdup BAM with -G <gtf> -e; the
+# <sample>.ballgown directory is moved alongside (upstream emits it, but the
+# port does not declare it as an output).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "stringtie"
+description = "StringTie reference-guided transcript assembly and quantification (nf-core STRINGTIE_STRINGTIE, -G gtf -e, --fr/--rf from strandedness)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/star_salmon/stringtie/{sample}.transcripts.gtf",
+    "{config.out_dir}/star_salmon/stringtie/{sample}.gene.abundance.txt",
+    "{config.out_dir}/star_salmon/stringtie/{sample}.coverage.gtf",
+]
+when = "!config.skip_stringtie"
+shell = """
+case "{config.strandedness}" in
+    forward) STRAND=--fr ;;
+    reverse) STRAND=--rf ;;
+    *) STRAND= ;;
+esac
+stringtie {input[0]} $STRAND -G {input[1]} \\
+    -o {sample}.transcripts.gtf \\
+    -A {sample}.gene.abundance.txt \\
+    -C {sample}.coverage.gtf \\
+    -b {sample}.ballgown \\
+    -p 6 \\
+    -v -e
+mkdir -p {config.out_dir}/star_salmon/stringtie
+mv {sample}.transcripts.gtf {sample}.gene.abundance.txt {sample}.coverage.gtf \\
+    {config.out_dir}/star_salmon/stringtie/
+mv {sample}.ballgown {config.out_dir}/star_salmon/stringtie/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/stringtie.yaml"
+
+# ---------------------------------------------------------------------------
+# DESeq2 sample-level QC (modules/local/deseq2_qc). Runs on the length-scaled
+# merged gene counts. With >=2 samples it writes the PCA / sample-distance
+# MultiQC tables; the R session log is kept alongside (upstream publishes it
+# only for successful runs, and the mqc tsvs are consumed by MultiQC below).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "deseq2_qc"
+description = "DESeq2 sample-level QC (nf-core DESEQ2_QC): PCA + sample distances + size factors on salmon.merged.gene_counts_length_scaled.tsv"
+input = [
+    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+    "assets/multiqc/deseq2_pca_header.txt",
+    "assets/multiqc/deseq2_clustering_header.txt",
+]
+output = [
+    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.dds.RData",
+    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.pca.vals.txt",
+    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.plots.pdf",
+    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.sample.dists.txt",
+    "{config.out_dir}/star_salmon/deseq2_qc/size_factors/deseq2.size_factors.RData",
+    "{config.out_dir}/star_salmon/deseq2_qc/star_salmon.pca.vals_mqc.tsv",
+    "{config.out_dir}/star_salmon/deseq2_qc/star_salmon.sample.dists_mqc.tsv",
+    "{config.out_dir}/star_salmon/deseq2_qc/R_sessionInfo.log",
+]
+when = "!config.skip_qc && !config.skip_deseq2_qc && !config.skip_quantification_merge"
+shell = """
+VST_FLAG=""
+if [ "{config.deseq2_vst}" = "true" ]; then
+    VST_FLAG="--vst TRUE"
+fi
+deseq2_qc.r \\
+    --count_file {input[0]} \\
+    --outdir ./ \\
+    --cores 6 \\
+    --outprefix deseq2 \\
+    $VST_FLAG
+if [ -f "R_sessionInfo.log" ]; then
+    sed "s/deseq2_pca/star_salmon_deseq2_pca/g" <{input[1]} > pca_header.tmp
+    sed -i -e "s/DESeq2 PCA/STAR_SALMON DESeq2 PCA/g" pca_header.tmp
+    cat pca_header.tmp *.pca.vals.txt > star_salmon.pca.vals_mqc.tsv
+    rm pca_header.tmp
+    sed "s/deseq2_clustering/star_salmon_deseq2_clustering/g" <{input[2]} > clustering_header.tmp
+    sed -i -e "s/DESeq2 sample/STAR_SALMON DESeq2 sample/g" clustering_header.tmp
+    cat clustering_header.tmp *.sample.dists.txt > star_salmon.sample.dists_mqc.tsv
+    rm clustering_header.tmp
+fi
+mkdir -p {config.out_dir}/star_salmon/deseq2_qc
+mv deseq2.dds.RData deseq2.pca.vals.txt deseq2.plots.pdf deseq2.sample.dists.txt \\
+    star_salmon.pca.vals_mqc.tsv star_salmon.sample.dists_mqc.tsv R_sessionInfo.log \\
+    {config.out_dir}/star_salmon/deseq2_qc/
+mv size_factors {config.out_dir}/star_salmon/deseq2_qc/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/deseq2.yaml"

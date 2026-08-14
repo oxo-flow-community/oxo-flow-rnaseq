@@ -1,0 +1,9 @@
+# Environment for Picard MarkDuplicates — pinned exactly to the upstream
+# nf-core/rnaseq 3.26.0 module environment
+# (modules/nf-core/picard/markduplicates/environment.yml).
+name: picard
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::picard=3.4.0

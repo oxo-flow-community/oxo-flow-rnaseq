@@ -1,0 +1,9 @@
+# Environment for featureCounts — pinned exactly to the upstream
+# nf-core/rnaseq 3.26.0 module environment
+# (modules/nf-core/subread/featurecounts/environment.yml).
+name: subread
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::subread=2.0.6

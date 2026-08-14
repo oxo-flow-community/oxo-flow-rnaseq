@@ -1,0 +1,10 @@
+# Environment for samtools sort/index/stats/flagstat/idxstats — pinned exactly
+# to the upstream nf-core/rnaseq 3.26.0 module environments
+# (modules/nf-core/samtools/*/environment.yml).
+name: samtools
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::htslib=1.23.1
+  - bioconda::samtools=1.23.1

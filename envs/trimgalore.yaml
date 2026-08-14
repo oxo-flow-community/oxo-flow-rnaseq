@@ -1,0 +1,8 @@
+# Environment for TrimGalore — pinned exactly to the upstream nf-core/rnaseq
+# 3.26.0 module environment (modules/nf-core/trimgalore/environment.yml).
+name: trimgalore
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::trim-galore=2.1.0

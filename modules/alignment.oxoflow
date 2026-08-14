@@ -1,0 +1,239 @@
+# Alignment fragment: nf-core/rnaseq ALIGN_STAR + BAM_SORT_STATS_SAMTOOLS +
+# BAM_MARKDUPLICATES_PICARD (default star_salmon path).
+#
+# Rule -> upstream process (label: cpus/memory/time):
+#   star_align             STAR_ALIGN           (process_high: 12/72G/16h)
+#   samtools_sort          SAMTOOLS_SORT        (process_medium: 6/36G/8h)
+#   samtools_index_sorted  SAMTOOLS_INDEX       (process_low: 2/12G/4h)
+#   samtools_stats_sorted  SAMTOOLS_STATS       (process_single: 1/6G/4h)
+#   samtools_flagstat_sorted  SAMTOOLS_FLAGSTAT (process_single: 1/6G/4h)
+#   samtools_idxstats_sorted  SAMTOOLS_IDXSTATS (process_single: 1/6G/4h)
+#   picard_markduplicates  PICARD_MARKDUPLICATES (process_medium: 6/36G/8h)
+#   samtools_index_markdup / stats / flagstat / idxstats (labels as above)
+#
+# Upstream publish behaviour reproduced: the sorted/unsorted/intermediate BAMs
+# are only published when save_align_intermeds (or skip_markduplicates); the
+# port keeps them at results/star_salmon/ paths regardless so they act as
+# checkpoints (see README fidelity table).
+
+[workflow]
+name = "alignment"
+description = "STAR alignment, coordinate sort + index + stats, Picard mark duplicates and markdup-side BAM stats"
+
+# STAR_ALIGN (star_salmon quantifier args). attrRG is only emitted when args
+# do not contain --outSAMattrRGline, exactly like the upstream script:
+#   STAR --genomeDir <index> --readFilesIn <R1> <R2> --runThreadN 12
+#        --outFileNamePrefix <id>. --sjdbGTFfile <gtf>
+#        --outSAMattrRGline 'ID:<id>' 'SM:<id>'
+#        --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted
+#        --outSAMattributes NH HI AS NM MD --readFilesCommand zcat
+#        --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20
+#        --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif
+#        --quantTranscriptomeSAMoutput BanSingleEnd
+[[rules]]
+name = "star_align"
+description = "STAR alignment with default star_salmon args (nf-core STAR_ALIGN)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/star_salmon/log/{sample}.Log.final.out",
+    "{config.out_dir}/star_salmon/log/{sample}.Log.out",
+    "{config.out_dir}/star_salmon/log/{sample}.Log.progress.out",
+    "{config.out_dir}/star_salmon/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/star_salmon/{sample}.Aligned.out.bam",
+    "{config.out_dir}/star_salmon/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/star_salmon/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/star_salmon/
+"""
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+# SAMTOOLS_SORT: samtools cat <unsorted> | samtools sort -T <id>.sorted --threads 6 --reference <fasta> -o <id>.sorted.bam -
+[[rules]]
+name = "samtools_sort"
+description = "Coordinate-sort STAR BAM (nf-core SAMTOOLS_SORT in BAM_SORT_STATS_SAMTOOLS, prefix <id>.sorted)"
+input = ["{config.out_dir}/star_salmon/{sample}.Aligned.out.bam"]
+output = ["{config.out_dir}/star_salmon/{sample}.sorted.bam"]
+shell = """
+samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# SAMTOOLS_INDEX: samtools index -@ 2 <bam>  -> <bam>.bai
+[[rules]]
+name = "samtools_index_sorted"
+description = "Index sorted BAM (nf-core SAMTOOLS_INDEX)"
+input = ["{config.out_dir}/star_salmon/{sample}.sorted.bam"]
+output = ["{config.out_dir}/star_salmon/{sample}.sorted.bam.bai"]
+shell = """
+samtools index -@ 2 {input[0]}
+"""
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# BAM_STATS_SAMTOOLS (sorted side, prefix <id>.sorted.bam)
+[[rules]]
+name = "samtools_stats_sorted"
+description = "samtools stats on sorted BAM (nf-core SAMTOOLS_STATS, prefix <id>.sorted.bam)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.sorted.bam.bai",
+]
+output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.stats"]
+shell = """
+samtools stats --threads 1 --reference {config.fasta} {input[0]} {input[1]} > {output[0]}
+"""
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_flagstat_sorted"
+description = "samtools flagstat on sorted BAM (nf-core SAMTOOLS_FLAGSTAT, prefix <id>.sorted.bam)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.sorted.bam.bai",
+]
+output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.flagstat"]
+shell = """
+samtools flagstat --threads 1 {input[0]} > {output[0]}
+"""
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_idxstats_sorted"
+description = "samtools idxstats on sorted BAM (nf-core SAMTOOLS_IDXSTATS, prefix <id>.sorted.bam)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.sorted.bam.bai",
+]
+output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.idxstats"]
+shell = """
+samtools idxstats --threads 0 {input[0]} > {output[0]}
+"""
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# PICARD_MARKDUPLICATES: picard -Xmx29491M MarkDuplicates
+#   --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY
+#   LENIENT --TMP_DIR tmp --INPUT <sorted> --OUTPUT <id>.markdup.sorted.bam
+#   --REFERENCE_SEQUENCE <fasta> --METRICS_FILE <id>.markdup.sorted.metrics.txt
+# (-Xmx = 36G * 0.8 = 29491M)
+[[rules]]
+name = "picard_markduplicates"
+description = "Mark duplicates with Picard (nf-core PICARD_MARKDUPLICATES, -Xmx29491M, prefix <id>.markdup.sorted)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
+    "{config.fasta}",
+]
+output = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/picard_metrics/{sample}.markdup.sorted.metrics.txt",
+]
+shell = """
+mkdir -p tmp
+picard -Xmx29491M MarkDuplicates --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp --INPUT {input[0]} --OUTPUT {output[0]} --REFERENCE_SEQUENCE {input[1]} --METRICS_FILE {output[1]}
+"""
+when = "!config.skip_markduplicates"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/picard.yaml"
+
+# Markdup-side index + BAM stats (BAM_MARKDUPLICATES_PICARD SAMTOOLS_INDEX /
+# BAM_STATS_SAMTOOLS, prefix <id>.markdup.sorted(.bam))
+[[rules]]
+name = "samtools_index_markdup"
+description = "Index markdup BAM (nf-core SAMTOOLS_INDEX)"
+input = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai"]
+shell = """
+samtools index -@ 2 {input[0]}
+"""
+when = "!config.skip_markduplicates"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_stats_markdup"
+description = "samtools stats on markdup BAM (nf-core SAMTOOLS_STATS, prefix <id>.markdup.sorted.bam)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+]
+output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.stats"]
+shell = """
+samtools stats --threads 1 --reference {config.fasta} {input[0]} {input[1]} > {output[0]}
+"""
+when = "!config.skip_markduplicates"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_flagstat_markdup"
+description = "samtools flagstat on markdup BAM (nf-core SAMTOOLS_FLAGSTAT, prefix <id>.markdup.sorted.bam)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+]
+output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.flagstat"]
+shell = """
+samtools flagstat --threads 1 {input[0]} > {output[0]}
+"""
+when = "!config.skip_markduplicates"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_idxstats_markdup"
+description = "samtools idxstats on markdup BAM (nf-core SAMTOOLS_IDXSTATS, prefix <id>.markdup.sorted.bam)"
+input = [
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+]
+output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.idxstats"]
+shell = """
+samtools idxstats --threads 0 {input[0]} > {output[0]}
+"""
+when = "!config.skip_markduplicates"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"

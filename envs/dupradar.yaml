@@ -1,0 +1,8 @@
+# Environment for dupRadar — pinned exactly to the upstream nf-core/rnaseq
+# 3.26.0 module environment (modules/nf-core/dupradar/environment.yml).
+name: dupradar
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::bioconductor-dupradar=1.38.0

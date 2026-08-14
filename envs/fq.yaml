@@ -1,0 +1,9 @@
+# Environment for fq lint — pinned exactly to the upstream nf-core/rnaseq
+# 3.26.0 module environment (modules/nf-core/fq/lint/environment.yml).
+# bioconda first is intentional upstream (nf-core/modules#7871).
+name: fq
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - bioconda::fq=0.12.0

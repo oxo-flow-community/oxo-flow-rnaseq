@@ -1,0 +1,9 @@
+# Environment for the biotype-counts MultiQC script — pinned exactly to the
+# upstream nf-core/rnaseq 3.26.0 module environment
+# (modules/nf-core/custom/multiqccustombiotype/environment.yml).
+name: biotype
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - conda-forge::python=3.12.12

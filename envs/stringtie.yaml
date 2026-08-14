@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 STRINGTIE_STRINGTIE
+# module environment (modules/nf-core/stringtie/stringtie/environment.yml).
+name: stringtie
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::stringtie=2.2.3

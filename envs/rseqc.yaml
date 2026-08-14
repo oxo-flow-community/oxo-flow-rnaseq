@@ -1,0 +1,9 @@
+# Environment for the RSeQC modules — pinned exactly to the upstream
+# nf-core/rnaseq 3.26.0 module environment (modules/nf-core/rseqc/*/environment.yml).
+name: rseqc
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::rseqc=5.0.4
+  - conda-forge::r-base=4.3

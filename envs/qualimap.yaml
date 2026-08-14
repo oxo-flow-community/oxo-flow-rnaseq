@@ -1,0 +1,8 @@
+# Environment for Qualimap RNA-seq QC — pinned exactly to the upstream
+# nf-core/rnaseq 3.26.0 module environment (modules/nf-core/qualimap/rnaseq/environment.yml).
+name: qualimap
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::qualimap=2.3
