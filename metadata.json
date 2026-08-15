@@ -95,7 +95,7 @@
   ],
   "description": "End-to-end bulk RNA-seq analysis for paired-end reads: fq lint and FastQC raw-read QC, TrimGalore adapter/quality trimming, STAR alignment, Picard MarkDuplicates, Salmon alignment-mode quantification with tximport-merged gene/transcript count tables and SummarizedExperiment R objects, StringTie reference-guided assembly and quantification, featureCounts gene counts with biotype tables, RSeQC / dupRadar / Qualimap QC, DESeq2 sample-level QC (PCA, sample distances, size factors), strand-specific bigWig tracks, and one final MultiQC report with the nf-core/rnaseq custom content (fail_trimmed / fail_mapped tables, strandedness checks, software versions). A faithful port of the nf-core/rnaseq 3.26.0 default star_salmon path — same tools, same versions, same commands.",
   "installation": {
-    "engine": "oxo-flow >= 0.11.0",
+    "engine": "oxo-flow >= 0.12.0",
     "toolchain": "conda envs — pinned (envs/*.yaml, versions pinned to the upstream nf-core/rnaseq 3.26.0 module environments; requires conda or mamba)",
     "requirements": [
       "paired-end FASTQ reads: reads_dir/<sample>_R1.fastq.gz + _R2.fastq.gz, cohort declared in [[sample_groups]]",
