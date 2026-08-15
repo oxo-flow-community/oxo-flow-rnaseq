@@ -1,19 +1,81 @@
-# oxo-flow-rnaseq
+# oxo-flow-rnaseq — RNA-seq: alignment, quantification and QC
 
-RNA-seq analysis with STAR: FastQC, TrimGalore, STAR alignment, Picard mark
-duplicates, Salmon quantification (alignment mode) with tximport merged
-counts + SummarizedExperiment objects, StringTie assembly/quantification,
-featureCounts gene counts, RSeQC / dupRadar / Qualimap QC, DESeq2 sample
-QC and a final MultiQC report.
+> ★ Verified · ⇄ Official port of [`nf-core/rnaseq`](https://github.com/nf-core/rnaseq) @ `3.26.0` — same tools, same versions, same commands. Part of the [oxo-flow-community catalog](https://oxo-flow-community.github.io/).
 
-An [oxo-flow](https://github.com/Traitome/oxo-flow) port of the
-[nf-core/rnaseq](https://github.com/nf-core/rnaseq) pipeline at **3.26.0**
-(commit `e7ca46272c8f9d5ceee3f71759f4ba551d3217a4`), covering the
-**default-parameters main execution path** (aligner `star_salmon`, trimmer
-`trimgalore`, Salmon alignment-mode quantification, no UMI extraction).
-Port date: 2026-08-15.
+Run a complete bulk RNA-seq analysis on paired-end reads: FastQC and fq lint
+raw-read QC, TrimGalore adapter/quality trimming, STAR alignment, Picard
+duplicate marking, Salmon alignment-mode quantification with tximport-merged
+gene/transcript count tables and SummarizedExperiment R objects, StringTie
+reference-guided transcript assembly and quantification, featureCounts gene
+counts, RSeQC / dupRadar / Qualimap QC, DESeq2 sample-level QC (PCA, sample
+distances, size factors), strand-specific bigWig tracks, and one final
+MultiQC report with the nf-core/rnaseq custom content. The pipeline follows
+the upstream default path (aligner `star_salmon`, trimmer `trimgalore`),
+with every tool and command pinned to nf-core/rnaseq 3.26.0 — from raw
+FASTQs to a single report with gene counts, transcript-level quantification
+and per-sample QC.
 
-## Quick start
+## Installation
+
+### 1. Install oxo-flow
+
+This workflow requires **oxo-flow >= 0.11.0**. Release binary (recommended):
+
+```bash
+curl -fL -o oxo-flow.tar.gz https://github.com/Traitome/oxo-flow/releases/download/v0.11.0/oxo-flow-v0.11.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf oxo-flow.tar.gz && sudo mv oxo-flow /usr/local/bin/
+```
+
+Alternatively via conda:
+
+```bash
+conda install -c bioconda oxo-flow-cli
+```
+
+(The conda package may lag behind releases; binaries for other platforms are
+on the [releases page](https://github.com/Traitome/oxo-flow/releases).)
+
+### 2. Get this workflow
+
+```bash
+git clone https://github.com/oxo-flow-community/oxo-flow-rnaseq.git
+cd oxo-flow-rnaseq
+```
+
+### 3. Requirements
+
+**Reference data (all inputs — genome preparation is not ported, you must
+provide these):**
+
+- `fasta` — reference genome (uncompressed FASTA)
+- `gtf` — gene annotation (GTF)
+- `transcript_fasta` — transcriptome FASTA (upstream `--transcript_fasta`);
+  used by Salmon alignment-mode quant and StringTie
+- `gene_bed` — 12-column BED of the same genes (RSeQC input)
+- `chrom_sizes` — UCSC chrom.sizes file
+- `star_index` — a directory with a STAR genome index built from the same
+  FASTA/GTF (e.g. `STAR --runMode genomeGenerate --genomeDir star_index
+  --genomeFastaFiles genome.fa --sjdbGTFfile genes.gtf`)
+
+**Reads:** `reads_dir/<sample>_R1.fastq.gz` and `reads_dir/<sample>_R2.fastq.gz`
+(paired-end only). The sample cohort is declared in `[[sample_groups]]`.
+
+The repository ships tiny synthetic fixtures for all of the above
+(`test/fixtures/`), so the default config validates and dry-runs cleanly.
+
+**Compute:** per-rule resources reproduce the upstream process labels
+(`[rules.resources]`). STAR alignment is the most demanding rule — 12 CPUs /
+72 GB; the majority of rules run on 6 CPUs / 36 GB or 1 CPU / 6 GB. Plan
+node capacity accordingly.
+
+**Tool delivery:** conda environments with pinned versions. Every rule
+declares `[rules.environment] conda = "envs/<tool>.yaml"` (20 environments
+in `envs/`), with each package version pinned exactly to the upstream
+nf-core/rnaseq 3.26.0 module environment (e.g. `star=2.7.11b`,
+`salmon=1.10.3`, `multiqc=1.33`). No containers are used — you need conda or
+mamba to create and activate these environments.
+
+## Usage
 
 ```bash
 # Point OXO at your oxo-flow binary (>= 0.11.0)
@@ -33,8 +95,6 @@ export OXO=oxo-flow
 # Acceptance test (validate + lint + dry-run + debug):
 ./test/run.sh
 ```
-
-## About
 
 The pipeline follows the upstream default path:
 
@@ -56,24 +116,6 @@ FASTQ ──> fq lint ──> FastQC (raw) ──> TrimGalore (+FastQC trim) ─
            fail_mapped tables, strandedness checks, salmon, DESeq2, sample
            merge, versions)
 ```
-
-### Inputs
-
-- Reads: `reads_dir/<sample>_R1.fastq.gz` and `reads_dir/<sample>_R2.fastq.gz`
-  (paired-end only). The sample cohort is declared in `[[sample_groups]]`.
-- Reference artifacts (all inputs — genome preparation is not ported):
-  - `fasta` — reference genome (uncompressed FASTA)
-  - `gtf` — gene annotation (GTF)
-  - `transcript_fasta` — transcriptome FASTA (upstream `--transcript_fasta`);
-    used by Salmon alignment-mode quant and StringTie
-  - `gene_bed` — 12-column BED of the same genes (RSeQC input)
-  - `chrom_sizes` — UCSC chrom.sizes file
-  - `star_index` — a directory with a STAR genome index built from the same
-    FASTA/GTF (e.g. `STAR --runMode genomeGenerate --genomeDir star_index
-    --genomeFastaFiles genome.fa --sjdbGTFfile genes.gtf`)
-
-The repository ships tiny synthetic fixtures for all of the above
-(`test/fixtures/`), so the default config validates and dry-runs cleanly.
 
 ### Configuration
 
@@ -107,7 +149,7 @@ the upstream defaults:
 | `deseq2_vst` | `--deseq2_vst` | `true` | variance stabilizing transformation for DESeq2 QC |
 | `save_trimmed` / `save_align_intermeds` | `--save_trimmed` / `--save_align_intermeds` | `false` | accepted for parity; trimmed FASTQs and intermediate BAMs are kept at results/ paths regardless |
 
-## Outputs
+### Outputs
 
 `results/` mirrors the upstream `outdir/` layout under `results/<aligner>/`
 (aligner = `star_salmon`):
@@ -147,6 +189,13 @@ the upstream defaults:
 - `multiqc/` — custom content files and
   `multiqc/star_salmon/multiqc_report.html`
 
+## Source
+
+Upstream: [`nf-core/rnaseq`](https://github.com/nf-core/rnaseq) @ `3.26.0`
+(commit `e7ca46272c8f9d5ceee3f71759f4ba551d3217a4`), licensed MIT. Created
+2026-08-15; this workflow may lag behind upstream releases. See `NOTICE.md`
+for upstream attribution and the licensing of copied files.
+
 ## Fidelity
 
 Commands mirror the upstream modules byte-for-byte under default parameters
@@ -181,6 +230,16 @@ Known, documented deviations:
 aligner branches); `PREPARE_GENOME` (reference artifacts are inputs); per-sample
 `min_trimmed_reads` filtering; UMI extraction; BBSplit and rRNA removal;
 `cat_fastq`; the Nextflow-param-rendered MultiQC sections.
+
+## Test
+
+```bash
+bash test/run.sh
+```
+
+Runs `validate` + `lint` + `dry-run` (plus DAG-ordering and wildcard-expansion
+regression checks) against the default fixture config; exits non-zero on any
+failure.
 
 ## License
 
