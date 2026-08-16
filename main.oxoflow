@@ -210,6 +210,11 @@ expand_inputs = [
     # variable): DAG edges are exact-string matches, and {config.out_dir}
     # resolves at render time. A concrete "results/..." prefix would not match
     # producer outputs that still contain the literal {config.out_dir} wildcard.
+    # fq lint tables (raw + trimmed) — upstream nf-core stages both into
+    # MultiQC; without these patterns the lint rules look disconnected in
+    # the workflow graph and their tables never reach the report.
+    { pattern = "{config.out_dir}/fq_lint/raw/{sample}.fq_lint.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fq_lint/trimmed/{sample}.fq_lint.txt", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.html", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.zip", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_2_fastqc.html", variables = { sample = "config.samples_list" } },
