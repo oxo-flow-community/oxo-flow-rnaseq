@@ -51,14 +51,7 @@ salmon quant \\
     --libType=$LIBTYPE \\
     -t {input[2]} \\
     -a {input[0]} \\
-    -o {sample}
-if [ -f {sample}/aux_info/meta_info.json ]; then
-    cp {sample}/aux_info/meta_info.json "{sample}_meta_info.json"
-fi
-if [ -f {sample}/lib_format_counts.json ]; then
-    cp {sample}/lib_format_counts.json "{sample}_lib_format_counts.json"
-fi
-mv {sample} {config.out_dir}/star_salmon/
+    -o {config.out_dir}/star_salmon/{sample}
 """
 [rules.resources]
 threads = 6
