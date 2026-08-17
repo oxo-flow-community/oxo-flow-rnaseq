@@ -45,6 +45,7 @@ if [ -n "{config.salmon_quant_libtype}" ]; then
     LIBTYPE="{config.salmon_quant_libtype}"
 fi
 salmon quant \\
+    --no-version-check \\
     --geneMap {input[1]} \\
     --threads 6 \\
     --libType=$LIBTYPE \\
