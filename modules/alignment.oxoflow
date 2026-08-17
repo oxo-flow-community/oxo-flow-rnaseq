@@ -141,11 +141,11 @@ memory = "6G"
 [rules.environment]
 conda = "envs/samtools.yaml"
 
-# PICARD_MARKDUPLICATES: picard -Xmx29491M MarkDuplicates
+# PICARD_MARKDUPLICATES: picard -Xmx{effective_memory_mb}m MarkDuplicates
 #   --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY
 #   LENIENT --TMP_DIR tmp --INPUT <sorted> --OUTPUT <id>.markdup.sorted.bam
 #   --REFERENCE_SEQUENCE <fasta> --METRICS_FILE <id>.markdup.sorted.metrics.txt
-# (-Xmx = 36G * 0.8 = 29491M)
+# (-Xmx = the machine's effective memory; upstream hardcodes 36G * 0.8 = 29491M)
 [[rules]]
 name = "picard_markduplicates"
 description = "Mark duplicates with Picard (nf-core PICARD_MARKDUPLICATES, -Xmx29491M, prefix <id>.markdup.sorted)"
@@ -159,7 +159,7 @@ output = [
 ]
 shell = """
 mkdir -p tmp
-picard -Xmx29491M MarkDuplicates --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp --INPUT {input[0]} --OUTPUT {output[0]} --REFERENCE_SEQUENCE {input[1]} --METRICS_FILE {output[1]}
+picard -Xmx{effective_memory_mb}m MarkDuplicates --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp --INPUT {input[0]} --OUTPUT {output[0]} --REFERENCE_SEQUENCE {input[1]} --METRICS_FILE {output[1]}
 """
 when = "!config.skip_markduplicates"
 [rules.resources]
