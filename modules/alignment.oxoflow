@@ -49,7 +49,7 @@ output = [
 ]
 shell = """
 set -euo pipefail
-STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
 mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/star_salmon/log/
 mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/star_salmon/
 """
