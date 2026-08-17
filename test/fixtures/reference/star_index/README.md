@@ -1,11 +1,11 @@
-# STAR index (placeholder)
+# STAR index (auto-built)
 
 The STAR index is an upstream input artifact (PREPARE_GENOME is not
-ported). Build one for your genome before running, e.g.:
+ported), so the repo ships no binary index. The engine's `star_index`
+reference builder (see `[[references]]` in main.oxoflow) builds it from
+the shipped fixture genome when the `SAindex` sentinel is missing — a
+fresh clone runs end to end.
 
-    STAR --runMode genomeGenerate --genomeDir star_index \
-        --genomeFastaFiles genome.fa --sjdbGTFfile genes.gtf \
-        --runThreadN 8
-
-and point `config.star_index` at the directory containing the
-`SA`, `SAindex`, `genomeParameters.txt` etc. files.
+For real data, point `config.star_index` at your own index directory
+(containing `SA`, `SAindex`, `genomeParameters.txt`, ...); an existing
+index wins over the auto-build.
