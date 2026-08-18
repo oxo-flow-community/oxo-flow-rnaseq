@@ -113,9 +113,13 @@ parse_metadata <- function(metadata_path, ids, metadata_id_col = NULL){
     # Remove any all-NA columns
     metadata <-  metadata[, colSums(is.na(metadata)) != nrow(metadata)]
 
-    # Allow for duplicate rows by the id column
+    # Allow for duplicate rows by the id column. The formula is built
+    # from the column NAME — a bare metadata[[col]] inside the formula
+    # is evaluated inside model.frame's data scope and dies with
+    # "'data' must be a data.frame" (live).
+    id_formula <- as.formula(paste(". ~", paste0("`", metadata_id_col, "`")))
     metadata <- aggregate(
-        . ~ metadata[[metadata_id_col]],
+        id_formula,
         data = metadata,
         FUN = function(x) paste(unique(x), collapse = ",")
     )[,-1]
