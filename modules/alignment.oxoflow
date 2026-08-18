@@ -99,7 +99,10 @@ input = [
 ]
 output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.stats"]
 shell = """
-samtools stats --threads 1 --reference {config.fasta} {input[0]} {input[1]} > {output[0]}
+# the .bai is a declared input for invalidation, NOT a region —
+# (live: passing it positionally made samtools treat it as a region:
+# "Region '...bam.bai' specifies an unknown reference name")
+samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
 """
 [rules.resources]
 threads = 1
@@ -194,7 +197,10 @@ input = [
 ]
 output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.stats"]
 shell = """
-samtools stats --threads 1 --reference {config.fasta} {input[0]} {input[1]} > {output[0]}
+# the .bai is a declared input for invalidation, NOT a region —
+# (live: passing it positionally made samtools treat it as a region:
+# "Region '...bam.bai' specifies an unknown reference name")
+samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
 """
 when = "!config.skip_markduplicates"
 [rules.resources]
