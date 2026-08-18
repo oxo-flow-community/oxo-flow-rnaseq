@@ -175,7 +175,7 @@ output = [
 when = "!config.skip_quantification_merge"
 shell = """
 printf "sample\\n" > samples.tsv
-printf "%s" "{config.samples_list}" | tr ',' '\\n' >> samples.tsv
+printf "%s\\n" "{config.samples_list}" | tr ',' '\\n' >> samples.tsv
 Rscript scripts/summarizedexperiment.r \\
     --matrix-files "{config.out_dir}/star_salmon/salmon.merged.gene_counts.tsv {config.out_dir}/star_salmon/salmon.merged.gene_tpm.tsv {config.out_dir}/star_salmon/salmon.merged.gene_lengths.tsv {config.out_dir}/star_salmon/salmon.merged.gene_counts_scaled.tsv {config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv" \\
     --assay-names counts,counts_length_scaled,counts_scaled,lengths,tpm \\
