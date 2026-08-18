@@ -131,7 +131,9 @@ def fragment_sequence(chr1, exons, rng, spliced=True):
 
 def write_reads(chr1, chr2):
     os.makedirs(RAW, exist_ok=True)
-    for sample in ("S1", "S2"):
+    # 6 samples like the nf-core test profile — DESeq2's dispersion fit
+    # needs enough samples (live: estimateDispersionsFit failed on 2).
+    for sample in ("S1", "S2", "S3", "S4", "S5", "S6"):
         rng = random.Random(SEED + hash(sample) % 1000)
         r1s, r2s = [], []
         for _ in range(400):
