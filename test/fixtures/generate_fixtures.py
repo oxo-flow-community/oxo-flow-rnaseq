@@ -37,7 +37,7 @@ def rand_seq(rng, n):
 
 
 def build_genome(rng):
-    chr1 = rand_seq(rng, 140000)
+    chr1 = rand_seq(rng, 230000)  # the 60-gene cursor ends ~216kb (live: reads past the genome end came out empty)
     chr2 = rand_seq(rng, 5000)
     return chr1, chr2
 
@@ -143,7 +143,7 @@ def write_reads(chr1, chr2):
     # 6 samples like the nf-core test profile — DESeq2's dispersion fit
     # needs enough samples (live: estimateDispersionsFit failed on 2).
     for sample in ("S1", "S2", "S3", "S4", "S5", "S6"):
-        rng = random.Random(SEED + hash(sample) % 1000)
+        rng = random.Random(SEED + sum(ord(c) for c in sample))  # hash() is PYTHONHASHSEED-salted — not reproducible across runs
         r1s, r2s = [], []
         for _ in range(1200):
             gene = rng.choice(GENES)
