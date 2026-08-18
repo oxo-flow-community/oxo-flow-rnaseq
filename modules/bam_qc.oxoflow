@@ -169,7 +169,7 @@ output = [
     "{config.out_dir}/star_salmon/rseqc/junction_annotation/xls/{sample}.junction.xls",
 ]
 shell = """
-junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_annotation.log >&2)
+junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/star_salmon/rseqc/junction_annotation/log/{sample}.junction_annotation.log >&2)
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.xls {config.out_dir}/star_salmon/rseqc/junction_annotation/xls/
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.bed {config.out_dir}/star_salmon/rseqc/junction_annotation/bed/
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_plot.r {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/
