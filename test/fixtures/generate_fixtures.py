@@ -29,7 +29,7 @@ REF = os.path.join(HERE, "reference")
 RAW = os.path.join(HERE, "raw")
 SEED = 42
 ADAPTER = "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"  # TruSeq adapter (R1 3')
-READ_LEN = 100   # >=100: adapter-stripped reads must stay alignable (live: 50bp reads trimmed to 30bp, STAR classified all 400 as "too short")
+READ_LEN = 151   # nf-core test-data length: the STAR index is built with the default sjdbOverhang=100, so reads must be > overhang+1 (live: 100bp reads got a negative anchor and all 400 were classified "too short")
 
 
 def rand_seq(rng, n):
