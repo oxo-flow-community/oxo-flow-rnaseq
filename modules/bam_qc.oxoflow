@@ -173,11 +173,12 @@ junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salm
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.xls {config.out_dir}/star_salmon/rseqc/junction_annotation/xls/
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.bed {config.out_dir}/star_salmon/rseqc/junction_annotation/bed/
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_plot.r {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/
-# the pie pdfs come from running the emitted R script (live: the CLI
-# does NOT run it internally in this version)
-cd {config.out_dir}/star_salmon/rseqc/junction_annotation && Rscript rscript/{sample}.junction_plot.r
-mv {config.out_dir}/star_salmon/rseqc/junction_annotation/splicing_events_pie.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
-mv {config.out_dir}/star_salmon/rseqc/junction_annotation/splicing_junction_pie.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
+# the emitted R script embeds the full -o prefix in its pdf() paths, so
+# it must run from the workflow ROOT (live: running it from the output
+# subdir double-prefixed the path — 'cannot open file')
+Rscript {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/{sample}.junction_plot.r
+mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.splice_events.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
+mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.splice_junction.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
 """
 when = "!config.skip_qc"
 [rules.resources]
