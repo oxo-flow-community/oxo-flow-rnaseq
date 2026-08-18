@@ -231,6 +231,9 @@ stringtie {input[0]} $STRAND -G {input[1]} \\
     -p 6 \\
     -v -e
 mkdir -p {config.out_dir}/star_salmon/stringtie
+# fresh-dir semantics: the previous attempt's ballgown dir makes the
+# mv fail with 'Directory not empty' on a re-run (shared workdir)
+rm -rf {config.out_dir}/star_salmon/stringtie/{sample}.ballgown
 mv {sample}.transcripts.gtf {sample}.gene.abundance.txt {sample}.coverage.gtf \\
     {config.out_dir}/star_salmon/stringtie/
 mv {sample}.ballgown {config.out_dir}/star_salmon/stringtie/
