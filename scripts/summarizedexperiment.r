@@ -110,8 +110,10 @@ parse_metadata <- function(metadata_path, ids, metadata_id_col = NULL){
         metadata_id_col <- findColumnWithAllEntries(ids, metadata)
     }
 
-    # Remove any all-NA columns
-    metadata <-  metadata[, colSums(is.na(metadata)) != nrow(metadata)]
+    # Remove any all-NA columns (drop = FALSE so a single-column
+    # samplesheet stays a data.frame — live: the bare subset dropped it
+    # to a vector and ncol() came back NULL).
+    metadata <-  metadata[, colSums(is.na(metadata)) != nrow(metadata), drop = FALSE]
 
     # Allow for duplicate rows by the id column. The formula is built
     # from the column NAME — a bare metadata[[col]] inside the formula
