@@ -2,7 +2,7 @@
   "name": "oxo-flow-rnaseq",
   "title": "RNA-seq: alignment, quantification and QC",
   "origin": "port",
-  "rating": "verified",
+  "rating": "live-verified",
   "engine": "nextflow",
   "source": {
     "repo": "nf-core/rnaseq",
