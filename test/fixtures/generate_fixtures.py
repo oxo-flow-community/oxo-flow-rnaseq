@@ -113,17 +113,19 @@ def fragment_sequence(chr1, exons, rng, spliced=True):
         pre = rng.randrange(10, 26)          # bases read from exon_a's end
         post = READ_LEN - pre                 # bases read from exon_b's start
         r1 = chr1[exon_a[1] - pre: exon_a[1]] + chr1[exon_b[0]: exon_b[0] + post]
-        # Mate: from exon_b (downstream)
+        # Mate: from exon_b (downstream), reverse-complemented — paired
+        # reads are FR oriented (live: forward-forward mates made STAR
+        # classify every pair as 'too short').
         pos = exon_b[0] + rng.randrange(0, max(1, exon_b[1] - exon_b[0] - READ_LEN))
-        r2 = chr1[pos:pos + READ_LEN]
+        r2 = reverse_complement(chr1[pos:pos + READ_LEN])
         return r1, r2
     start = rng.randrange(exons[0][0], max(exons[0][0] + 1, exons[0][1] - (READ_LEN * 2 + 100)))
     r1 = chr1[start:start + READ_LEN]
-    r2 = chr1[start + 120: start + 120 + READ_LEN]  # ~120 bp insert
+    r2 = reverse_complement(chr1[start + 120: start + 120 + READ_LEN])  # ~120 bp insert
     if len(r1) < READ_LEN or len(r2) < READ_LEN:
         start = exons[0][0]
         r1 = (chr1[start:start + READ_LEN] + rand_seq(rng, READ_LEN))[:READ_LEN]
-        r2 = (chr1[start + 120: start + 120 + READ_LEN] + rand_seq(rng, READ_LEN))[:READ_LEN]
+        r2 = reverse_complement((chr1[start + 120: start + 120 + READ_LEN] + rand_seq(rng, READ_LEN))[:READ_LEN])
     return r1, r2
 
 
@@ -136,7 +138,10 @@ def write_reads(chr1, chr2):
             gene = rng.choice(GENES)
             r1, r2 = fragment_sequence(chr1, gene[3], rng)
             if gene[2] == "-":
-                r1, r2 = reverse_complement(r2), reverse_complement(r1)
+                # the '-' transcript's 5' end = rc of the genome's
+                # downstream region (= the FR mate), its 3' end = rc of
+                # the upstream region
+                r1, r2 = r2, reverse_complement(r1)
             # 3' adapter on a subset (trimgalore will trim it)
             if rng.random() < 0.25:
                 r1 = r1[:READ_LEN - 20] + ADAPTER[:20]
