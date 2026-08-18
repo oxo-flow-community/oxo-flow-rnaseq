@@ -2,19 +2,19 @@
 """Generate the tiny synthetic reference + read fixtures for oxo-flow-rnaseq.
 
 Deterministic (fixed seed). Produces:
-  reference/genome.fa       chr1 (~6kb) + chr2 (~5kb)
+  reference/genome.fa       chr1 (~140kb) + chr2 (~5kb)
   reference/transcripts.fa  one transcript per gene ({gene}_t1), the
                             concatenated exon sequences (reverse-complemented
                             for '-' strand genes) — Salmon alignment-mode
                             transcriptome input
-  reference/genes.gtf       4 genes on chr1 (2 protein_coding, 1 rRNA, 1 lncRNA)
-                            with 1-3 exons each; gene_biotype attributes
+  reference/genes.gtf       60 genes on chr1 (protein_coding/rRNA/lncRNA mix)
+                            with 2-3 exons each; gene_biotype attributes
   reference/gene.bed        12-column BED of the same exons (RSeQC input)
   reference/chrom_sizes.txt UCSC chrom.sizes (sorted by size, descending)
   reference/star_index/     README only (STAR index is a placeholder input;
                             build one for real runs)
-  raw/<S>_R1/R2.fastq.gz    ~400 50 bp read pairs per sample with 3' TruSeq
-                            adapters on a subset, spliced reads spanning gene1
+  raw/<S>_R1/R2.fastq.gz    1200 151 bp read pairs x 6 samples with 3' TruSeq
+                            adapters on a subset, spliced reads spanning gene
                             junctions, and some duplicated pairs
 
 The reads are sampled from the genome so a STAR index built from genome.fa can
@@ -37,7 +37,7 @@ def rand_seq(rng, n):
 
 
 def build_genome(rng):
-    chr1 = rand_seq(rng, 6000)
+    chr1 = rand_seq(rng, 140000)
     chr2 = rand_seq(rng, 5000)
     return chr1, chr2
 
@@ -46,13 +46,22 @@ def reverse_complement(seq):
     return seq.translate(str.maketrans("ACGT", "TGCA"))[::-1]
 
 
-# Genes on chr1: (name, biotype, strand, [(exon_start, exon_end), ...])
-GENES = [
-    ("GENE1", "protein_coding", "+", [(500, 1000), (1200, 1800), (2000, 2600)]),
-    ("GENE2", "protein_coding", "-", [(3000, 3600), (3800, 4300)]),
-    ("GENE3", "rRNA", "+", [(4400, 4900)]),
-    ("GENE4", "lncRNA", "-", [(5100, 5500), (5600, 5900)]),
-]
+# Genes on chr1: (name, biotype, strand, [(exon_start, exon_end), ...]).
+# 60 genes so DESeq2's dispersion fit has enough support (live: 4 genes
+# x 6 samples still failed estimateDispersionsFit).
+BIOTYPES = ["protein_coding", "protein_coding", "protein_coding", "rRNA", "lncRNA"]
+GENES = []
+_cursor = 0
+for _i in range(60):
+    _n_exons = 3 if _i % 3 else 2
+    _exons = []
+    for _e in range(_n_exons):
+        _start = _cursor + 200 + _e * 600
+        _exons.append((_start, _start + 400))
+        _cursor = _start + 400
+    GENES.append((f"GENE{_i + 1}", BIOTYPES[_i % len(BIOTYPES)],
+                  "+" if _i % 2 == 0 else "-", _exons))
+    _cursor += 600  # intergenic gap
 
 
 def write_reference(chr1, chr2):
@@ -136,7 +145,7 @@ def write_reads(chr1, chr2):
     for sample in ("S1", "S2", "S3", "S4", "S5", "S6"):
         rng = random.Random(SEED + hash(sample) % 1000)
         r1s, r2s = [], []
-        for _ in range(400):
+        for _ in range(1200):
             gene = rng.choice(GENES)
             r1, r2 = fragment_sequence(chr1, gene[3], rng)
             if gene[2] == "-":
