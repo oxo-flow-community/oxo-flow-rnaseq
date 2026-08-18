@@ -2,19 +2,19 @@
 """Generate the tiny synthetic reference + read fixtures for oxo-flow-rnaseq.
 
 Deterministic (fixed seed). Produces:
-  reference/genome.fa       chr1 (~6kb) + chr2 (~5kb)
+  reference/genome.fa       chr1 (~140kb) + chr2 (~5kb)
   reference/transcripts.fa  one transcript per gene ({gene}_t1), the
                             concatenated exon sequences (reverse-complemented
                             for '-' strand genes) — Salmon alignment-mode
                             transcriptome input
-  reference/genes.gtf       4 genes on chr1 (2 protein_coding, 1 rRNA, 1 lncRNA)
-                            with 1-3 exons each; gene_biotype attributes
+  reference/genes.gtf       60 genes on chr1 (protein_coding/rRNA/lncRNA mix)
+                            with 2-3 exons each; gene_biotype attributes
   reference/gene.bed        12-column BED of the same exons (RSeQC input)
   reference/chrom_sizes.txt UCSC chrom.sizes (sorted by size, descending)
   reference/star_index/     README only (STAR index is a placeholder input;
                             build one for real runs)
-  raw/<S>_R1/R2.fastq.gz    ~400 50 bp read pairs per sample with 3' TruSeq
-                            adapters on a subset, spliced reads spanning gene1
+  raw/<S>_R1/R2.fastq.gz    1200 151 bp read pairs x 6 samples with 3' TruSeq
+                            adapters on a subset, spliced reads spanning gene
                             junctions, and some duplicated pairs
 
 The reads are sampled from the genome so a STAR index built from genome.fa can
@@ -29,7 +29,7 @@ REF = os.path.join(HERE, "reference")
 RAW = os.path.join(HERE, "raw")
 SEED = 42
 ADAPTER = "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"  # TruSeq adapter (R1 3')
-READ_LEN = 50
+READ_LEN = 151   # nf-core test-data length: the STAR index is built with the default sjdbOverhang=100, so reads must be > overhang+1 (live: 100bp reads got a negative anchor and all 400 were classified "too short")
 
 
 def rand_seq(rng, n):
@@ -37,7 +37,7 @@ def rand_seq(rng, n):
 
 
 def build_genome(rng):
-    chr1 = rand_seq(rng, 6000)
+    chr1 = rand_seq(rng, 230000)  # the 60-gene cursor ends ~216kb (live: reads past the genome end came out empty)
     chr2 = rand_seq(rng, 5000)
     return chr1, chr2
 
@@ -46,13 +46,22 @@ def reverse_complement(seq):
     return seq.translate(str.maketrans("ACGT", "TGCA"))[::-1]
 
 
-# Genes on chr1: (name, biotype, strand, [(exon_start, exon_end), ...])
-GENES = [
-    ("GENE1", "protein_coding", "+", [(500, 1000), (1200, 1800), (2000, 2600)]),
-    ("GENE2", "protein_coding", "-", [(3000, 3600), (3800, 4300)]),
-    ("GENE3", "rRNA", "+", [(4400, 4900)]),
-    ("GENE4", "lncRNA", "-", [(5100, 5500), (5600, 5900)]),
-]
+# Genes on chr1: (name, biotype, strand, [(exon_start, exon_end), ...]).
+# 60 genes so DESeq2's dispersion fit has enough support (live: 4 genes
+# x 6 samples still failed estimateDispersionsFit).
+BIOTYPES = ["protein_coding", "protein_coding", "protein_coding", "rRNA", "lncRNA"]
+GENES = []
+_cursor = 0
+for _i in range(60):
+    _n_exons = 3 if _i % 3 else 2
+    _exons = []
+    for _e in range(_n_exons):
+        _start = _cursor + 200 + _e * 600
+        _exons.append((_start, _start + 400))
+        _cursor = _start + 400
+    GENES.append((f"GENE{_i + 1}", BIOTYPES[_i % len(BIOTYPES)],
+                  "+" if _i % 2 == 0 else "-", _exons))
+    _cursor += 600  # intergenic gap
 
 
 def write_reference(chr1, chr2):
@@ -113,30 +122,37 @@ def fragment_sequence(chr1, exons, rng, spliced=True):
         pre = rng.randrange(10, 26)          # bases read from exon_a's end
         post = READ_LEN - pre                 # bases read from exon_b's start
         r1 = chr1[exon_a[1] - pre: exon_a[1]] + chr1[exon_b[0]: exon_b[0] + post]
-        # Mate: from exon_b (downstream)
+        # Mate: from exon_b (downstream), reverse-complemented — paired
+        # reads are FR oriented (live: forward-forward mates made STAR
+        # classify every pair as 'too short').
         pos = exon_b[0] + rng.randrange(0, max(1, exon_b[1] - exon_b[0] - READ_LEN))
-        r2 = chr1[pos:pos + READ_LEN]
+        r2 = reverse_complement(chr1[pos:pos + READ_LEN])
         return r1, r2
     start = rng.randrange(exons[0][0], max(exons[0][0] + 1, exons[0][1] - (READ_LEN * 2 + 100)))
     r1 = chr1[start:start + READ_LEN]
-    r2 = chr1[start + 120: start + 120 + READ_LEN]  # ~120 bp insert
+    r2 = reverse_complement(chr1[start + 120: start + 120 + READ_LEN])  # ~120 bp insert
     if len(r1) < READ_LEN or len(r2) < READ_LEN:
         start = exons[0][0]
         r1 = (chr1[start:start + READ_LEN] + rand_seq(rng, READ_LEN))[:READ_LEN]
-        r2 = (chr1[start + 120: start + 120 + READ_LEN] + rand_seq(rng, READ_LEN))[:READ_LEN]
+        r2 = reverse_complement((chr1[start + 120: start + 120 + READ_LEN] + rand_seq(rng, READ_LEN))[:READ_LEN])
     return r1, r2
 
 
 def write_reads(chr1, chr2):
     os.makedirs(RAW, exist_ok=True)
-    for sample in ("S1", "S2"):
-        rng = random.Random(SEED + hash(sample) % 1000)
+    # 6 samples like the nf-core test profile — DESeq2's dispersion fit
+    # needs enough samples (live: estimateDispersionsFit failed on 2).
+    for sample in ("S1", "S2", "S3", "S4", "S5", "S6"):
+        rng = random.Random(SEED + sum(ord(c) for c in sample))  # hash() is PYTHONHASHSEED-salted — not reproducible across runs
         r1s, r2s = [], []
-        for _ in range(400):
+        for _ in range(1200):
             gene = rng.choice(GENES)
             r1, r2 = fragment_sequence(chr1, gene[3], rng)
             if gene[2] == "-":
-                r1, r2 = reverse_complement(r2), reverse_complement(r1)
+                # the '-' transcript's 5' end = rc of the genome's
+                # downstream region (= the FR mate), its 3' end = rc of
+                # the upstream region
+                r1, r2 = r2, reverse_complement(r1)
             # 3' adapter on a subset (trimgalore will trim it)
             if rng.random() < 0.25:
                 r1 = r1[:READ_LEN - 20] + ADAPTER[:20]

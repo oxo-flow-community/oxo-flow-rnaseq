@@ -48,7 +48,8 @@ output = [
     "{config.out_dir}/star_salmon/{sample}.Aligned.toTranscriptome.out.bam",
 ]
 shell = """
-STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
 mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/star_salmon/log/
 mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/star_salmon/
 """
@@ -98,7 +99,10 @@ input = [
 ]
 output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.stats"]
 shell = """
-samtools stats --threads 1 --reference {config.fasta} {input[0]} {input[1]} > {output[0]}
+# the .bai is a declared input for invalidation, NOT a region —
+# (live: passing it positionally made samtools treat it as a region:
+# "Region '...bam.bai' specifies an unknown reference name")
+samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
 """
 [rules.resources]
 threads = 1
@@ -140,11 +144,11 @@ memory = "6G"
 [rules.environment]
 conda = "envs/samtools.yaml"
 
-# PICARD_MARKDUPLICATES: picard -Xmx29491M MarkDuplicates
+# PICARD_MARKDUPLICATES: picard -Xmx{effective_memory_mb}m MarkDuplicates
 #   --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY
 #   LENIENT --TMP_DIR tmp --INPUT <sorted> --OUTPUT <id>.markdup.sorted.bam
 #   --REFERENCE_SEQUENCE <fasta> --METRICS_FILE <id>.markdup.sorted.metrics.txt
-# (-Xmx = 36G * 0.8 = 29491M)
+# (-Xmx = the machine's effective memory; upstream hardcodes 36G * 0.8 = 29491M)
 [[rules]]
 name = "picard_markduplicates"
 description = "Mark duplicates with Picard (nf-core PICARD_MARKDUPLICATES, -Xmx29491M, prefix <id>.markdup.sorted)"
@@ -158,7 +162,7 @@ output = [
 ]
 shell = """
 mkdir -p tmp
-picard -Xmx29491M MarkDuplicates --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp --INPUT {input[0]} --OUTPUT {output[0]} --REFERENCE_SEQUENCE {input[1]} --METRICS_FILE {output[1]}
+picard -Xmx{effective_memory_mb}m MarkDuplicates --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp --INPUT {input[0]} --OUTPUT {output[0]} --REFERENCE_SEQUENCE {input[1]} --METRICS_FILE {output[1]}
 """
 when = "!config.skip_markduplicates"
 [rules.resources]
@@ -193,7 +197,10 @@ input = [
 ]
 output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.stats"]
 shell = """
-samtools stats --threads 1 --reference {config.fasta} {input[0]} {input[1]} > {output[0]}
+# the .bai is a declared input for invalidation, NOT a region —
+# (live: passing it positionally made samtools treat it as a region:
+# "Region '...bam.bai' specifies an unknown reference name")
+samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
 """
 when = "!config.skip_markduplicates"
 [rules.resources]

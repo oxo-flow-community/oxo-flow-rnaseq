@@ -110,15 +110,28 @@ parse_metadata <- function(metadata_path, ids, metadata_id_col = NULL){
         metadata_id_col <- findColumnWithAllEntries(ids, metadata)
     }
 
-    # Remove any all-NA columns
-    metadata <-  metadata[, colSums(is.na(metadata)) != nrow(metadata)]
+    # Remove any all-NA columns (drop = FALSE so a single-column
+    # samplesheet stays a data.frame — live: the bare subset dropped it
+    # to a vector and ncol() came back NULL).
+    metadata <-  metadata[, colSums(is.na(metadata)) != nrow(metadata), drop = FALSE]
 
-    # Allow for duplicate rows by the id column
-    metadata <- aggregate(
-        . ~ metadata[[metadata_id_col]],
-        data = metadata,
-        FUN = function(x) paste(unique(x), collapse = ",")
-    )[,-1]
+    # Allow for duplicate rows by the id column. The formula is built
+    # from the column NAME — a bare metadata[[col]] inside the formula
+    # is evaluated inside model.frame's data scope and dies with
+    # "'data' must be a data.frame" (live).
+    if (ncol(metadata) == 1) {
+        # single-column samplesheet (a bare sample list): nothing to
+        # aggregate over — the '.' LHS would expand to zero columns and
+        # model.frame would reject the empty cbind() (live).
+        metadata <- metadata[!duplicated(metadata[[metadata_id_col]]), , drop = FALSE]
+    } else {
+        id_formula <- as.formula(paste(". ~", paste0("`", metadata_id_col, "`")))
+        metadata <- aggregate(
+            id_formula,
+            data = metadata,
+            FUN = function(x) paste(unique(x), collapse = ",")
+        )[,-1]
+    }
 
     rownames(metadata) <- metadata[[metadata_id_col]]
 

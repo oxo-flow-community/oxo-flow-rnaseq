@@ -169,12 +169,16 @@ output = [
     "{config.out_dir}/star_salmon/rseqc/junction_annotation/xls/{sample}.junction.xls",
 ]
 shell = """
-junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_annotation.log >&2)
+junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/star_salmon/rseqc/junction_annotation/log/{sample}.junction_annotation.log >&2)
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.xls {config.out_dir}/star_salmon/rseqc/junction_annotation/xls/
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.bed {config.out_dir}/star_salmon/rseqc/junction_annotation/bed/
 mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_plot.r {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/
-mv splicing_events_pie.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
-mv splicing_junction_pie.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
+# the emitted R script embeds the full -o prefix in its pdf() paths, so
+# it must run from the workflow ROOT (live: running it from the output
+# subdir double-prefixed the path — 'cannot open file')
+Rscript {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/{sample}.junction_plot.r
+mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.splice_events.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
+mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.splice_junction.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -200,7 +204,13 @@ output = [
 shell = """
 junction_saturation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}
 mv {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}.junctionSaturation_plot.r {config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/
-mv junction_saturation.pdf {config.out_dir}/star_salmon/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf
+# the python only emits the plotting script — the pdf is produced by
+# running it. The .r embeds the full -o prefix in its pdf() path, so it
+# must run from the workflow ROOT (live: running from the output subdir
+# double-prefixed the path — 'cannot open file').
+Rscript {config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r
+# the R script writes <prefix>.junctionSaturation_plot.pdf (not junction_saturation.pdf)
+mv {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}.junctionSaturation_plot.pdf {config.out_dir}/star_salmon/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf
 """
 when = "!config.skip_qc"
 [rules.resources]

@@ -110,6 +110,23 @@ memory = "6G"
 name = "samples"
 samples = ["S1", "S2"]
 
+# Auto-built reference: the STAR index is an upstream input artifact (the
+# port ships no binary index), so the engine builds it from the shipped
+# fixture genome when the sentinel is missing — a fresh clone runs end to
+# end. An existing index (SAindex present) wins; for real data point
+# config.star_index at your own index directory.
+[[references]]
+name = "star_index"
+source = "test/fixtures/reference/genome.fa"
+output = "test/fixtures/reference/star_index/SAindex"
+build = "mkdir -p test/fixtures/reference/star_index && STAR --runMode genomeGenerate --genomeDir test/fixtures/reference/star_index --genomeFastaFiles {source} --sjdbGTFfile test/fixtures/reference/genes.gtf --runThreadN 8"
+threads = 8
+memory = "16G"
+
+[references.environment]
+conda = "envs/star.yaml"
+
+
 [[include]]
 path = "modules/fastq_qc.oxoflow"
 namespace = "fastq_qc"
