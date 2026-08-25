@@ -1,0 +1,9 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 HISAT2_ALIGN module
+# environment (modules/nf-core/hisat2/align/environment.yml).
+name: hisat2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::hisat2=2.2.1
+  - bioconda::samtools=1.20

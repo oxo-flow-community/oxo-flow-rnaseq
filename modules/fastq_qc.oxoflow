@@ -1,19 +1,51 @@
 # Read QC fragment: nf-core/rnaseq FASTQ_FASTQC_UMITOOLS_TRIMGALORE +
-# FQ_LINT / FQ_LINT_AFTER_TRIMMING (default path, no UMI extraction).
+# FQ_LINT / FQ_LINT_AFTER_TRIMMING / FQ_LINT_AFTER_BBSPLIT /
+# FQ_LINT_AFTER_RIBO_REMOVAL + BBMAP_BBSPLIT + FASTQ_REMOVE_RRNA +
+# FASTQC_FILTERED (subworkflows/nf-core/fastq_qc_trim_filter_setstrandedness).
 #
 # Rule -> upstream process (label: cpus/memory/time):
-#   fq_lint_raw        FQ_LINT                (process_low: 2/12G/4h)
-#   fastqc_raw         FASTQC                 (process_low: 2/12G/4h)
-#   trimgalore         TRIMGALORE             (process_medium+low_memory: 8/1G/8h)
-#   fq_lint_trimmed    FQ_LINT_AFTER_TRIMMING (process_low: 2/12G/4h)
+#   fq_lint_raw            FQ_LINT                  (process_low: 2/12G/4h)
+#   fastqc_raw             FASTQC                   (process_low: 2/12G/4h)
+#   umitools_extract_umis  UMITOOLS_EXTRACT         (process_single+long: 1/6G/20h)
+#   trimgalore / _umi      TRIMGALORE               (process_medium+low_memory: 8/1G/8h)
+#   fq_lint_trimmed        FQ_LINT_AFTER_TRIMMING   (process_low: 2/12G/4h)
+#   bbsplit_index          BBMAP_BBSPLIT build-only (process_high: 12/72G/8h)
+#   bbsplit (2 variants)   BBMAP_BBSPLIT            (process_high: 12/72G/8h)
+#   fq_lint_bbsplit        FQ_LINT_AFTER_BBSPLIT    (process_low: 2/12G/4h)
+#   rrna_fastas_prepare    GUNZIP_RRNA_FASTAS       (process_single: 1/6G/4h)
+#   sortmerna_index        SORTMERNA_INDEX          (process_high: 12/72G/8h)
+#   sortmerna (2 variants) SORTMERNA                (process_high: 12/72G/8h)
+#   fq_lint_rrna_*         FQ_LINT_AFTER_RIBO_REMOVAL (process_low: 2/12G/4h)
+#   bowtie2_rrna_index     SEQKIT_REPLACE x2 + BOWTIE2_BUILD (2/12G + 12/72G)
+#   bowtie2_align_rrna     BOWTIE2_ALIGN_PE         (process_high: 12/72G/8h)
+#   samtools_view_rrna     SAMTOOLS_VIEW_BOWTIE2    (process_low: 2/12G/4h)
+#   samtools_fastq_rrna    SAMTOOLS_FASTQ_BOWTIE2   (process_low: 2/12G/4h)
+#   fastqc_filtered_*      FASTQC_FILTERED          (process_low: 2/12G/4h)
 #
-# The per-sample min_trimmed_reads gate (reads below the threshold are dropped
-# from the downstream chain) is a data-dependent workflow filter and is NOT
-# ported — see README fidelity table.
+# Fidelity notes:
+# - The per-sample min_trimmed_reads gate (reads below the threshold are
+#   dropped from the downstream chain) is a data-dependent workflow filter and
+#   is NOT ported — see README fidelity table.
+# - Branches whose filtered-read source depends on earlier filters are ported
+#   as exclusive-gate rule variants with IDENTICAL outputs (sortmerna /
+#   bowtie2_align_rrna / fastqc_filtered / fq_lint_rrna): the engine's DAG
+#   edges are exact string matches, so the read source must be static per
+#   rule; exactly one variant fires per config state.
+# - Reference index builders (bbsplit_index / sortmerna_index /
+#   bowtie2_rrna_index) are branch-conditional [[rules]] emitting canonical
+#   dirs under {config.out_dir}/reference/; a non-empty user-supplied
+#   config.{bbsplit,sortmerna}_index short-circuits the build to a symlink
+#   (bowtie2_rrna has no upstream prebuilt-index param, so it always builds).
+# - The bbsplit summary.txt timestamp dance (jshell) is kept verbatim; the
+#   index is staged into index_writable like upstream's input_index staging.
+# - rrna manifest entries must be LOCAL paths: upstream resolves them through
+#   Nextflow file() (which downloads URLs); the engine does not fetch. The
+#   shipped default manifest is a URL, so the rRNA branches need a local copy
+#   of the SortMeRNA database (see README fidelity table).
 
 [workflow]
 name = "fastq_qc"
-description = "Read QC: fq lint on raw reads, FastQC, TrimGalore trimming with internal FastQC, fq lint on trimmed reads"
+description = "Read QC: fq lint on raw reads, FastQC, UMI extraction, TrimGalore trimming with internal FastQC, fq lint on trimmed reads, BBSplit genome filtering, rRNA removal (SortMeRNA/Bowtie2) and FastQC on filtered reads"
 
 # FQ_LINT: fq lint <extra_fqlint_args> <R1> <R2> > <id>.fq_lint.txt
 [[rules]]
@@ -62,8 +94,38 @@ memory = "12G"
 [rules.environment]
 conda = "envs/fastqc.yaml"
 
-# TRIMGALORE (PE branch): symlink to <id>_trimmed_1/2.fastq.gz, then
-#   trim_galore --fastqc_args '-t 8' --cores 4 --paired --gzip <prefix>_1 <prefix>_2
+# UMITOOLS_EXTRACT (PE branch, with_umi && !skip_umi_extract): no ext.args
+# override upstream, so the extract runs with no extra flags. The extracted
+# reads replace the raw reads as the trimmer input (trimgalore_umi below).
+[[rules]]
+name = "umitools_extract_umis"
+description = "Extract UMIs from raw reads with umi_tools (nf-core UMITOOLS_EXTRACT PE branch, prefix <id>)"
+input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+output = [
+    "{config.out_dir}/umitools/{sample}.umi_extract_1.fastq.gz",
+    "{config.out_dir}/umitools/{sample}.umi_extract_2.fastq.gz",
+    "{config.out_dir}/umitools/{sample}.umi_extract.log",
+]
+shell = """
+umi_tools \\
+    extract \\
+    -I {input[0]} \\
+    --read2-in={input[1]} \\
+    -S {sample}.umi_extract_1.fastq.gz \\
+    --read2-out={sample}.umi_extract_2.fastq.gz \\
+    > {sample}.umi_extract.log
+mkdir -p {config.out_dir}/umitools
+mv {sample}.umi_extract_1.fastq.gz {sample}.umi_extract_2.fastq.gz {sample}.umi_extract.log {config.out_dir}/umitools/
+"""
+when = "config.with_umi && !config.skip_umi_extract"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+# TRIMGALORE (PE branch, no UMI extraction): symlink to <id>_trimmed_1/2.fastq.gz,
+# then trim_galore --fastqc_args '-t 8' --cores 4 --paired --gzip <prefix>_1 <prefix>_2
 # (cores = cpus - 4 = 4; -t 8 = task.cpus; --fastqc_args from upstream ext.args).
 [[rules]]
 name = "trimgalore"
@@ -88,7 +150,44 @@ mv {sample}_trimmed_1.fastq.gz_trimming_report.txt {sample}_trimmed_2.fastq.gz_t
 mv {sample}_trimmed_1_val_1_fastqc.html {sample}_trimmed_1_val_1_fastqc.zip {config.out_dir}/fastqc/trim/
 mv {sample}_trimmed_2_val_2_fastqc.html {sample}_trimmed_2_val_2_fastqc.zip {config.out_dir}/fastqc/trim/
 """
-when = "!config.skip_trimming"
+when = "!config.skip_trimming && !(config.with_umi && !config.skip_umi_extract)"
+[rules.resources]
+threads = 8
+memory = "1G"
+[rules.environment]
+conda = "envs/trimgalore.yaml"
+
+# TRIMGALORE on UMI-extracted reads: upstream feeds TRIMGALORE the extracted
+# reads when (with_umi && !skip_umi_extract). Same command and outputs as
+# trimgalore; the two rules have exclusive when gates, so exactly one fires
+# and downstream rules resolve the shared trimmed-read paths.
+[[rules]]
+name = "trimgalore_umi"
+description = "Adapter trimming of UMI-extracted reads with TrimGalore (nf-core TRIMGALORE PE branch, prefix <id>_trimmed)"
+input = [
+    "{config.out_dir}/umitools/{sample}.umi_extract_1.fastq.gz",
+    "{config.out_dir}/umitools/{sample}.umi_extract_2.fastq.gz",
+]
+output = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_1_val_1_fastqc.html",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_1_val_1_fastqc.zip",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_2_val_2_fastqc.html",
+    "{config.out_dir}/fastqc/trim/{sample}_trimmed_2_val_2_fastqc.zip",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1.fastq.gz_trimming_report.txt",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2.fastq.gz_trimming_report.txt",
+]
+shell = """
+[ ! -f {sample}_trimmed_1.fastq.gz ] && ln -s {input[0]} {sample}_trimmed_1.fastq.gz
+[ ! -f {sample}_trimmed_2.fastq.gz ] && ln -s {input[1]} {sample}_trimmed_2.fastq.gz
+trim_galore --fastqc_args '-t 8' --cores 4 --paired --gzip {sample}_trimmed_1.fastq.gz {sample}_trimmed_2.fastq.gz
+mv {sample}_trimmed_1_val_1.fq.gz {sample}_trimmed_2_val_2.fq.gz {config.out_dir}/trimgalore/
+mv {sample}_trimmed_1.fastq.gz_trimming_report.txt {sample}_trimmed_2.fastq.gz_trimming_report.txt {config.out_dir}/trimgalore/
+mv {sample}_trimmed_1_val_1_fastqc.html {sample}_trimmed_1_val_1_fastqc.zip {config.out_dir}/fastqc/trim/
+mv {sample}_trimmed_2_val_2_fastqc.html {sample}_trimmed_2_val_2_fastqc.zip {config.out_dir}/fastqc/trim/
+"""
+when = "!config.skip_trimming && config.with_umi && !config.skip_umi_extract"
 [rules.resources]
 threads = 8
 memory = "1G"
@@ -113,3 +212,622 @@ threads = 2
 memory = "12G"
 [rules.environment]
 conda = "envs/fq.yaml"
+
+# ---------------------------------------------------------------------------
+# BBSplit genome filtering (upstream: BBMAP_BBSPLIT, only_build_index=true)
+# ---------------------------------------------------------------------------
+
+# Index builder: emits the canonical dir {config.out_dir}/reference/bbsplit_index.
+# A user-supplied config.bbsplit_index short-circuits to a symlink; otherwise
+# the index is built from config.fasta (primary) plus every CSV row of
+# config.bbsplit_fasta_list (short_name,path). Summary files get the relative
+# bbsplit_index/ref paths fixed exactly like the upstream build-mode block so
+# the runtime index_writable dance below runs verbatim.
+[[rules]]
+name = "bbsplit_index"
+description = "Build the BBSplit index from the genome + bbsplit_fasta_list CSV (nf-core BBMAP_BBSPLIT build-only, canonical dir results/reference/bbsplit_index)"
+input = ["{config.fasta}"]
+output = ["{config.out_dir}/reference/bbsplit_index"]
+shell = """
+if [ -n "{config.bbsplit_index}" ]; then
+    rm -rf {config.out_dir}/reference/bbsplit_index
+    mkdir -p {config.out_dir}/reference
+    ln -s {config.bbsplit_index} {config.out_dir}/reference/bbsplit_index
+    exit 0
+fi
+if [ -z "{config.bbsplit_fasta_list}" ] || [ ! -s "{config.bbsplit_fasta_list}" ]; then
+    echo "ERROR: Please specify a bbsplit_fasta_list CSV (short_name,path)" >&2
+    exit 1
+fi
+REFS="ref_primary={input[0]}"
+while IFS=, read -r name path; do
+    [ -z "$name" ] && continue
+    REFS="$REFS ref_${name}=${path}"
+done < {config.bbsplit_fasta_list}
+rm -rf bbsplit_build bbsplit_index
+bbsplit.sh \\
+    -Xmx58982M \\
+    $REFS \\
+    path=bbsplit_build \\
+    threads=12 \\
+    build=1 ambiguous2=all maxindel=150000 ow=f 2>| >(tee genome_transcriptome.log >&2)
+# Summary files will have an absolute path that will make the index
+# impossible to use in other processes - fix paths and rename atomically
+if [ -d bbsplit_build/ref/genome ]; then
+    find bbsplit_build/ref/genome -name summary.txt | while read -r summary_file; do
+        sed "s|^source.*|source\\t$(grep '^source' "$summary_file" | cut -f2- -d$'\\t' | sed 's|.*/bbsplit_build|bbsplit_index|')|" "$summary_file" > ${summary_file}.tmp && mv ${summary_file}.tmp ${summary_file}
+    done
+    mv bbsplit_build bbsplit_index
+fi
+mkdir -p {config.out_dir}/reference/bbsplit_index
+mv bbsplit_index/* {config.out_dir}/reference/bbsplit_index/
+"""
+when = "!config.skip_bbsplit"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/bbmap.yaml"
+
+# BBSplit runtime: stages the canonical index into a writable structure
+# (upstream input_index -> index_writable dance, verbatim), then splits the
+# trimmed reads. Reads before BBSplit are always the shared trimgalore paths
+# (either trimgalore or trimgalore_umi produced them). avail_mem =
+# 0.8 x 73728 MB (process_high 72G) = 58982 MB.
+[[rules]]
+name = "bbsplit"
+description = "Split reads against the reference genome index with BBSplit (nf-core BBMAP_BBSPLIT, basename <id>_%_#, keeps primary reads)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/reference/bbsplit_index",
+]
+output = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}.stats.txt",
+    "{config.out_dir}/bbsplit/log/{sample}.log",
+]
+shell = """
+rm -rf input_index index_writable
+
+# If using a pre-built index, create writable structure: symlink all files except
+# summary.txt (which we copy to modify). When we stage in the index files the time
+# stamps get disturbed, which bbsplit doesn't like. Fix the time stamps in summaries.
+ln -s {input[2]} input_index
+find input_index/ref -type f | while read -r f; do
+    target="index_writable/${f#input_index/}"
+    mkdir -p "$(dirname "$target")"
+    [[ $(basename "$f") == "summary.txt" ]] && cp "$f" "$target" || ln -s "$(realpath "$f")" "$target"
+done
+find index_writable/ref/genome -name summary.txt | while read -r summary_file; do
+    src=$(grep '^source' "$summary_file" | cut -f2- -d$'\\t' | sed 's|.*/ref/|index_writable/ref/|')
+    mod=$(echo "System.out.println(java.nio.file.Files.getLastModifiedTime(java.nio.file.Paths.get(\\"$src\\")).toMillis());" | jshell -J-Djdk.lang.Process.launchMechanism=vfork - 2>/dev/null | grep -oE '^[0-9]{12,14}$')
+    sed -e 's|bbsplit_index/ref|index_writable/ref|' -e "s|^last modified.*|last modified\\t$mod|" "$summary_file" > ${summary_file}.tmp && mv ${summary_file}.tmp ${summary_file}
+done
+
+# Run BBSplit
+
+bbsplit.sh \\
+    -Xmx58982M \\
+    path=index_writable \\
+    threads=12 \\
+    in={input[0]} in2={input[1]} \\
+    basename={sample}_%_#.fastq.gz \\
+    refstats={sample}.stats.txt \\
+    build=1 ambiguous2=all maxindel=150000 ow=f 2>| >(tee {sample}.log >&2)
+
+mkdir -p {config.out_dir}/bbsplit/log
+mv {sample}_primary_1.fastq.gz {sample}_primary_2.fastq.gz {sample}.stats.txt {config.out_dir}/bbsplit/
+mv {sample}.log {config.out_dir}/bbsplit/log/
+"""
+when = "!config.skip_bbsplit"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/bbmap.yaml"
+
+# FQ_LINT_AFTER_BBSPLIT
+[[rules]]
+name = "fq_lint_bbsplit"
+description = "Lint BBSplit primary FASTQs with fq (nf-core FQ_LINT_AFTER_BBSPLIT)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+]
+output = ["{config.out_dir}/fq_lint/bbsplit/{sample}.fq_lint.txt"]
+shell = """
+fq lint {config.extra_fqlint_args} {input[0]} {input[1]} > {output[0]}
+"""
+when = "!config.skip_linting && !config.skip_bbsplit"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fq.yaml"
+
+# ---------------------------------------------------------------------------
+# rRNA removal (subworkflow/nf-core/fastq_remove_rrna)
+# ---------------------------------------------------------------------------
+
+# GUNZIP_RRNA_FASTAS: decompress .gz manifest entries; plain entries pass
+# through. SortMeRNA's --ref rejects gzipped FASTAs, so this must run first.
+[[rules]]
+name = "rrna_fastas_prepare"
+description = "Prepare rRNA reference FASTA files from the ribo_database_manifest (nf-core GUNZIP_RRNA_FASTAS, canonical dir results/reference/rrna_fastas)"
+input = ["{config.ribo_database_manifest}"]
+output = ["{config.out_dir}/reference/rrna_fastas"]
+shell = """
+rm -rf {config.out_dir}/reference/rrna_fastas
+mkdir -p {config.out_dir}/reference/rrna_fastas
+while read -r f; do
+    [ -z "$f" ] && continue
+    case "$f" in
+        *.gz)
+            gzip -cd "$f" > {config.out_dir}/reference/rrna_fastas/"$(basename "$f" .gz)"
+            ;;
+        *)
+            cp "$f" {config.out_dir}/reference/rrna_fastas/
+            ;;
+    esac
+done < {config.ribo_database_manifest}
+"""
+when = "config.remove_ribo_rna && (config.ribo_removal_tool == 'sortmerna' || config.ribo_removal_tool == 'bowtie2')"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/sortmerna.yaml"
+
+# SORTMERNA_INDEX: sortmerna --ref <fasta>... --threads 12 --workdir .
+# --num_alignments 1 -v --index 1 writes idx/; the canonical dir holds the
+# .idx files directly (upstream emits path('idx') and the runtime uses it as
+# --idx-dir). A user-supplied config.sortmerna_index short-circuits to a
+# symlink (upstream UNTAR_SORTMERNA_INDEX stages the dir as-is).
+[[rules]]
+name = "sortmerna_index"
+description = "Build the SortMeRNA index from the rRNA FASTA references (nf-core SORTMERNA_INDEX, canonical dir results/reference/sortmerna_index)"
+input = ["{config.out_dir}/reference/rrna_fastas"]
+output = ["{config.out_dir}/reference/sortmerna_index"]
+shell = """
+if [ -n "{config.sortmerna_index}" ]; then
+    rm -rf {config.out_dir}/reference/sortmerna_index
+    mkdir -p {config.out_dir}/reference
+    ln -s {config.sortmerna_index} {config.out_dir}/reference/sortmerna_index
+    exit 0
+fi
+REFS=""
+for f in {config.out_dir}/reference/rrna_fastas/*; do
+    REFS="$REFS --ref $f"
+done
+rm -rf idx
+sortmerna $REFS \\
+    --threads 12 \\
+    --workdir . \\
+    --num_alignments 1 -v --index 1
+mkdir -p {config.out_dir}/reference/sortmerna_index
+mv idx/* {config.out_dir}/reference/sortmerna_index/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/sortmerna.yaml"
+
+# SORTMERNA on the shared trimmed reads (BBSplit off): keep reads where BOTH
+# mates fail to align to rRNA (--paired_in --out2). Output names are the
+# upstream <id>_1/_2.non_rRNA.fastq.gz + <id>.sortmerna.log.
+[[rules]]
+name = "sortmerna"
+description = "Remove rRNA reads with SortMeRNA on trimmed reads (nf-core SORTMERNA, --paired_in --out2, prefix <id>)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/reference/sortmerna_index",
+    "{config.out_dir}/reference/rrna_fastas",
+]
+output = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}.sortmerna.log",
+]
+shell = """
+REFS=""
+for f in {input[3]}/*; do
+    REFS="$REFS --ref $f"
+done
+rm -f non_rRNA_reads_fwd.f*q.gz non_rRNA_reads_rev.f*q.gz rRNA_reads.log {sample}.sortmerna.log
+sortmerna $REFS \\
+    --idx-dir {input[2]} \\
+    --reads {input[0]} --reads {input[1]} \\
+    --threads 12 \\
+    --workdir . \\
+    --aligned rRNA_reads --fastx --other non_rRNA_reads \\
+    --paired_in \\
+    --out2 \\
+    --num_alignments 1 -v --index 0
+
+mv non_rRNA_reads_fwd.f*q.gz {sample}_1.non_rRNA.fastq.gz
+mv non_rRNA_reads_rev.f*q.gz {sample}_2.non_rRNA.fastq.gz
+mv rRNA_reads.log {sample}.sortmerna.log
+mkdir -p {config.out_dir}/sortmerna
+mv {sample}_1.non_rRNA.fastq.gz {sample}_2.non_rRNA.fastq.gz {sample}.sortmerna.log {config.out_dir}/sortmerna/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna' && config.skip_bbsplit"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/sortmerna.yaml"
+
+# SORTMERNA on BBSplit primary reads (BBSplit on): upstream feeds the
+# post-BBSplit reads to rRNA removal. Identical outputs to sortmerna; the
+# exclusive when gate picks exactly one read source per config state.
+[[rules]]
+name = "sortmerna_bbsplit"
+description = "Remove rRNA reads with SortMeRNA on BBSplit primary reads (nf-core SORTMERNA, --paired_in --out2, prefix <id>)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.out_dir}/reference/sortmerna_index",
+    "{config.out_dir}/reference/rrna_fastas",
+]
+output = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}.sortmerna.log",
+]
+shell = """
+REFS=""
+for f in {input[3]}/*; do
+    REFS="$REFS --ref $f"
+done
+rm -f non_rRNA_reads_fwd.f*q.gz non_rRNA_reads_rev.f*q.gz rRNA_reads.log {sample}.sortmerna.log
+sortmerna $REFS \\
+    --idx-dir {input[2]} \\
+    --reads {input[0]} --reads {input[1]} \\
+    --threads 12 \\
+    --workdir . \\
+    --aligned rRNA_reads --fastx --other non_rRNA_reads \\
+    --paired_in \\
+    --out2 \\
+    --num_alignments 1 -v --index 0
+
+mv non_rRNA_reads_fwd.f*q.gz {sample}_1.non_rRNA.fastq.gz
+mv non_rRNA_reads_rev.f*q.gz {sample}_2.non_rRNA.fastq.gz
+mv rRNA_reads.log {sample}.sortmerna.log
+mkdir -p {config.out_dir}/sortmerna
+mv {sample}_1.non_rRNA.fastq.gz {sample}_2.non_rRNA.fastq.gz {sample}.sortmerna.log {config.out_dir}/sortmerna/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna' && !config.skip_bbsplit"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/sortmerna.yaml"
+
+# FQ_LINT_AFTER_RIBO_REMOVAL (sortmerna tool)
+[[rules]]
+name = "fq_lint_rrna_sortmerna"
+description = "Lint SortMeRNA-filtered FASTQs with fq (nf-core FQ_LINT_AFTER_RIBO_REMOVAL, publish fq_lint/sortmerna)"
+input = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+]
+output = ["{config.out_dir}/fq_lint/sortmerna/{sample}.fq_lint.txt"]
+shell = """
+fq lint {config.extra_fqlint_args} {input[0]} {input[1]} > {output[0]}
+"""
+when = "!config.skip_linting && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fq.yaml"
+
+# Bowtie2 rRNA removal index: SEQKIT_REPLACE (prefix <id>_prefixed, headers
+# become "<fasta_basename>_<seqid>"), SEQKIT_REPLACE_U2T (<id>_dna_converted,
+# U->T), concatenation into rrna_combined_dna.fasta (collectFile newLine),
+# then bowtie2-build (no ext.args override upstream). make_bowtie2_index is
+# unconditionally true when the bowtie2 branch is on (no prebuilt-index param
+# upstream), so this builder always builds. The three upstream processes fold
+# into one rule; the per-file seqkit invocations are a shell loop over the
+# rrna_fastas dir with the upstream commands verbatim.
+[[rules]]
+name = "bowtie2_rrna_index"
+description = "Build the Bowtie2 rRNA-removal index (nf-core SEQKIT_REPLACE + SEQKIT_REPLACE_U2T + BOWTIE2_BUILD on rrna_combined_dna.fasta, canonical dir results/reference/bowtie2_rrna_index)"
+input = ["{config.out_dir}/reference/rrna_fastas"]
+output = ["{config.out_dir}/reference/bowtie2_rrna_index"]
+shell = """
+rm -rf prefixed converted rrna_combined_dna.fasta bowtie2 {config.out_dir}/reference/bowtie2_rrna_index
+mkdir -p prefixed converted
+for f in {config.out_dir}/reference/rrna_fastas/*; do
+    id=$(basename "$f" .fasta)
+    seqkit \\
+        replace \\
+        --pattern "^(.+)" --replacement "${id}_\\$1" \\
+        --threads 2 \\
+        -i "$f" \\
+        -o "prefixed/${id}_prefixed.fasta"
+done
+for f in prefixed/*.fasta; do
+    id=$(basename "$f" _prefixed.fasta)
+    seqkit \\
+        replace \\
+        --by-seq --pattern "[Uu]" --replacement "T" \\
+        --threads 2 \\
+        -i "$f" \\
+        -o "converted/${id}_dna_converted.fasta"
+done
+: > rrna_combined_dna.fasta
+for f in converted/*.fasta; do
+    cat "$f"
+    printf '\\n'
+done >> rrna_combined_dna.fasta
+mkdir bowtie2
+bowtie2-build --threads 12 rrna_combined_dna.fasta bowtie2/rrna_combined_dna
+mkdir -p {config.out_dir}/reference/bowtie2_rrna_index
+mv bowtie2/* {config.out_dir}/reference/bowtie2_rrna_index/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/bowtie2.yaml"
+
+# BOWTIE2_ALIGN_PE against the rRNA index (BBSplit off): index discovered by
+# find within the canonical dir (upstream finds at the workdir root, which is
+# the port's explicit-find-root deviation), -f 12 unmapped-pair extraction
+# comes next. prefix <id>.bowtie2_rrna; --rg-id/--rg from the module default.
+[[rules]]
+name = "bowtie2_align_rrna"
+description = "Align reads to the rRNA index with Bowtie2 on trimmed reads (nf-core BOWTIE2_ALIGN_PE, --very-sensitive-local, prefix <id>.bowtie2_rrna)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/reference/bowtie2_rrna_index",
+]
+output = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_rrna.bam",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_rrna.log",
+]
+shell = """
+INDEX=`find -L {input[2]} -name "*.rev.1.bt2" | sed "s/\\.rev.1.bt2$//"`
+[ -z "$INDEX" ] && INDEX=`find -L {input[2]} -name "*.rev.1.bt2l" | sed "s/\\.rev.1.bt2l$//"`
+[ -z "$INDEX" ] && echo "Bowtie2 index files not found" 1>&2 && exit 1
+
+bowtie2 \\
+    -x $INDEX \\
+    -1 {input[0]} -2 {input[1]} \\
+    --threads 12 \\
+    --rg-id {sample}.bowtie2_rrna --rg SM:{sample}.bowtie2_rrna \\
+    --very-sensitive-local \\
+    2>| >(tee {sample}.bowtie2_rrna.log >&2) \\
+    | samtools view --threads 11 -o {sample}.bowtie2_rrna.bam -
+
+mkdir -p {config.out_dir}/bowtie2_rrna
+mv {sample}.bowtie2_rrna.bam {sample}.bowtie2_rrna.log {config.out_dir}/bowtie2_rrna/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2' && config.skip_bbsplit"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/bowtie2.yaml"
+
+# BOWTIE2_ALIGN_PE on BBSplit primary reads (BBSplit on): same outputs as
+# bowtie2_align_rrna, exclusive when gate.
+[[rules]]
+name = "bowtie2_align_rrna_bbsplit"
+description = "Align BBSplit primary reads to the rRNA index with Bowtie2 (nf-core BOWTIE2_ALIGN_PE, --very-sensitive-local, prefix <id>.bowtie2_rrna)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.out_dir}/reference/bowtie2_rrna_index",
+]
+output = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_rrna.bam",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_rrna.log",
+]
+shell = """
+INDEX=`find -L {input[2]} -name "*.rev.1.bt2" | sed "s/\\.rev.1.bt2$//"`
+[ -z "$INDEX" ] && INDEX=`find -L {input[2]} -name "*.rev.1.bt2l" | sed "s/\\.rev.1.bt2l$//"`
+[ -z "$INDEX" ] && echo "Bowtie2 index files not found" 1>&2 && exit 1
+
+bowtie2 \\
+    -x $INDEX \\
+    -1 {input[0]} -2 {input[1]} \\
+    --threads 12 \\
+    --rg-id {sample}.bowtie2_rrna --rg SM:{sample}.bowtie2_rrna \\
+    --very-sensitive-local \\
+    2>| >(tee {sample}.bowtie2_rrna.log >&2) \\
+    | samtools view --threads 11 -o {sample}.bowtie2_rrna.bam -
+
+mkdir -p {config.out_dir}/bowtie2_rrna
+mv {sample}.bowtie2_rrna.bam {sample}.bowtie2_rrna.log {config.out_dir}/bowtie2_rrna/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2' && !config.skip_bbsplit"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/bowtie2.yaml"
+
+# SAMTOOLS_VIEW_BOWTIE2: keep only pairs where BOTH mates are unmapped
+# (-f 12 = 4 + 8), prefix <id>.bowtie2_unmapped.
+[[rules]]
+name = "samtools_view_rrna"
+description = "Keep read pairs where both mates are unmapped to rRNA (nf-core SAMTOOLS_VIEW_BOWTIE2, -f 12, prefix <id>.bowtie2_unmapped)"
+input = ["{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_rrna.bam"]
+output = ["{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_unmapped.bam"]
+shell = """
+samtools \\
+    view \\
+    --threads 1 \\
+    -f 12 \\
+    -o {sample}.bowtie2_unmapped.bam \\
+    {input[0]}
+mkdir -p {config.out_dir}/bowtie2_rrna
+mv {sample}.bowtie2_unmapped.bam {config.out_dir}/bowtie2_rrna/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# SAMTOOLS_FASTQ_BOWTIE2: convert the unmapped-pair BAM back to paired FASTQ,
+# prefix <id>.bowtie2_filtered. The -0 other / -s singleton outputs are
+# emitted verbatim (upstream keeps them unpublished in the work dir).
+[[rules]]
+name = "samtools_fastq_rrna"
+description = "Convert unmapped-pair BAM to FASTQ (nf-core SAMTOOLS_FASTQ_BOWTIE2, prefix <id>.bowtie2_filtered)"
+input = ["{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_unmapped.bam"]
+output = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
+]
+shell = """
+samtools \\
+    fastq \\
+    --threads 1 \\
+    -0 {sample}.bowtie2_filtered_other.fastq.gz \\
+    {input[0]} \\
+    -1 {sample}.bowtie2_filtered_1.fastq.gz \\
+    -2 {sample}.bowtie2_filtered_2.fastq.gz \\
+    -s {sample}.bowtie2_filtered_singleton.fastq.gz
+mkdir -p {config.out_dir}/bowtie2_rrna
+mv {sample}.bowtie2_filtered_1.fastq.gz {sample}.bowtie2_filtered_2.fastq.gz {config.out_dir}/bowtie2_rrna/
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# FQ_LINT_AFTER_RIBO_REMOVAL (bowtie2 tool)
+[[rules]]
+name = "fq_lint_rrna_bowtie2"
+description = "Lint Bowtie2-filtered FASTQs with fq (nf-core FQ_LINT_AFTER_RIBO_REMOVAL, publish fq_lint/bowtie2)"
+input = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
+]
+output = ["{config.out_dir}/fq_lint/bowtie2/{sample}.fq_lint.txt"]
+shell = """
+fq lint {config.extra_fqlint_args} {input[0]} {input[1]} > {output[0]}
+"""
+when = "!config.skip_linting && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fq.yaml"
+
+# ---------------------------------------------------------------------------
+# FastQC on the final filtered reads (upstream FASTQC_FILTERED, gated on
+# !skip_fastqc && (!skip_bbsplit || remove_ribo_rna); prefix <id>_filtered).
+# Three exclusive-gate variants: the final read source is BBSplit primary,
+# SortMeRNA non_rRNA or Bowtie2-filtered depending on the config state.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "fastqc_filtered_bbsplit"
+description = "FastQC on BBSplit primary reads (nf-core FASTQC_FILTERED, prefix <id>_filtered)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+]
+output = [
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.zip",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.zip",
+]
+shell = """
+printf "%s %s\\n" {input[0]} {sample}_filtered_1.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+printf "%s %s\\n" {input[1]} {sample}_filtered_2.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+fastqc --quiet --threads 2 --memory 6000 {sample}_filtered_1.fastq.gz {sample}_filtered_2.fastq.gz
+mkdir -p {config.out_dir}/fastqc/filtered
+mv {sample}_filtered_1_fastqc.html {sample}_filtered_1_fastqc.zip {config.out_dir}/fastqc/filtered/
+mv {sample}_filtered_2_fastqc.html {sample}_filtered_2_fastqc.zip {config.out_dir}/fastqc/filtered/
+"""
+when = "!config.skip_fastqc && !config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fastqc.yaml"
+
+[[rules]]
+name = "fastqc_filtered_sortmerna"
+description = "FastQC on SortMeRNA-filtered reads (nf-core FASTQC_FILTERED, prefix <id>_filtered)"
+input = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+]
+output = [
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.zip",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.zip",
+]
+shell = """
+printf "%s %s\\n" {input[0]} {sample}_filtered_1.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+printf "%s %s\\n" {input[1]} {sample}_filtered_2.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+fastqc --quiet --threads 2 --memory 6000 {sample}_filtered_1.fastq.gz {sample}_filtered_2.fastq.gz
+mkdir -p {config.out_dir}/fastqc/filtered
+mv {sample}_filtered_1_fastqc.html {sample}_filtered_1_fastqc.zip {config.out_dir}/fastqc/filtered/
+mv {sample}_filtered_2_fastqc.html {sample}_filtered_2_fastqc.zip {config.out_dir}/fastqc/filtered/
+"""
+when = "!config.skip_fastqc && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fastqc.yaml"
+
+[[rules]]
+name = "fastqc_filtered_bowtie2"
+description = "FastQC on Bowtie2-filtered reads (nf-core FASTQC_FILTERED, prefix <id>_filtered)"
+input = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
+]
+output = [
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.zip",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.zip",
+]
+shell = """
+printf "%s %s\\n" {input[0]} {sample}_filtered_1.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+printf "%s %s\\n" {input[1]} {sample}_filtered_2.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+fastqc --quiet --threads 2 --memory 6000 {sample}_filtered_1.fastq.gz {sample}_filtered_2.fastq.gz
+mkdir -p {config.out_dir}/fastqc/filtered
+mv {sample}_filtered_1_fastqc.html {sample}_filtered_1_fastqc.zip {config.out_dir}/fastqc/filtered/
+mv {sample}_filtered_2_fastqc.html {sample}_filtered_2_fastqc.zip {config.out_dir}/fastqc/filtered/
+"""
+when = "!config.skip_fastqc && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fastqc.yaml"

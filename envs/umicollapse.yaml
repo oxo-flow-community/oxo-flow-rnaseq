@@ -1,0 +1,9 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 UMICOLLAPSE module
+# environment (modules/nf-core/umicollapse/environment.yml). The jar is
+# located relative to the wrapper script at runtime (see the shell).
+name: umicollapse
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::umicollapse=1.1.0

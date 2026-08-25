@@ -53,7 +53,10 @@ transcript_fasta = "test/fixtures/reference/transcripts.fa"
 # explicit values only. Used by featureCounts (-s), Qualimap (-p), dupRadar
 # and the forward/reverse bigWig gates.
 strandedness = "unstranded"
-# Aligner: only the upstream default 'star_salmon' path is ported.
+# Aligner selector (upstream: --aligner). The port supports the upstream
+# default 'star_salmon' plus the non-default branches (star_rsem, hisat2);
+# all downstream results paths follow {config.out_dir}/{config.aligner}/...
+# exactly like upstream's params.aligner-based publishDirs.
 aligner = "star_salmon"
 # Thresholds (upstream params with the same defaults).
 min_trimmed_reads = 10000
@@ -97,6 +100,52 @@ skip_deseq2_qc = false
 # DESeq2 QC transform: variance stabilizing transformation (upstream
 # --deseq2_vst default true).
 deseq2_vst = true
+# UMI handling (upstream: --with_umi / --skip_umi_extract / --umi_dedup_tool /
+# --umitools_* / --umi_discard_read / --save_umi_intermeds; same defaults).
+with_umi = false
+skip_umi_extract = false
+umi_dedup_tool = "umitools"
+umitools_grouping_method = "directional"
+umitools_dedup_stats = false
+umitools_dedup_primary_only = false
+# Empty = no --umi-separator flag (upstream default null).
+umitools_umi_separator = ""
+umi_discard_read = 0
+save_umi_intermeds = false
+# BBSplit genome filtering (upstream: --skip_bbsplit / --bbsplit_fasta_list /
+# --save_bbsplit_reads; same defaults). bbsplit_fasta_list is a 2-column CSV
+# (short_name,path_to_fasta) plus the primary genome in config.fasta.
+skip_bbsplit = true
+bbsplit_fasta_list = ""
+save_bbsplit_reads = false
+# Ribosomal RNA removal (upstream: --remove_ribo_rna / --ribo_removal_tool /
+# --ribo_database_manifest / --save_non_ribo_reads; same defaults). The
+# manifest is one fasta path per line; .gz entries are gunzipped before use.
+remove_ribo_rna = false
+ribo_removal_tool = "sortmerna"
+ribo_database_manifest = "assets/rrna-db-defaults.txt"
+save_non_ribo_reads = false
+# Non-default alignment branches (upstream: --aligner / --skip_alignment /
+# --rsem_index / --hisat2_index / --salmon_index / --bbsplit_index /
+# --sortmerna_index). Empty index keys are auto-built by when-gated builder
+# rules in modules/alignment.oxoflow / quantification.oxoflow from the
+# shipped fixtures when the branch is enabled (like star_index); a
+# user-supplied path is symlinked in instead.
+skip_alignment = false
+rsem_index = ""
+hisat2_index = ""
+salmon_index = ""
+bbsplit_index = ""
+sortmerna_index = ""
+# Pseudo-alignment (upstream: --pseudo_aligner, 'salmon' or 'kallisto';
+# default null = alignment-mode Salmon only). The port supports 'salmon';
+# 'kallisto' is not ported (see README fidelity table).
+pseudo_aligner = ""
+skip_pseudo_alignment = false
+# tximport gene attributes (upstream: --gtf_group_features /
+# --gtf_extra_attributes; same defaults).
+gtf_group_features = "gene_id"
+gtf_extra_attributes = "gene_name"
 
 [defaults]
 threads = 1
@@ -165,8 +214,8 @@ expand_inputs = [
     # resolves at render time. A concrete "results/..." prefix would not match
     # producer outputs that still contain the literal {config.out_dir} wildcard.
     { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_1.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/log/{sample}.Log.final.out", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/infer_experiment/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/infer_experiment/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
 ]
 output = [
     "{config.out_dir}/multiqc/fail_trimmed_samples_mqc.tsv",
@@ -180,6 +229,7 @@ output = [
 shell = """
 python scripts/multiqc_custom_content.py \\
     --out-dir {config.out_dir}/multiqc \\
+    --aligner {config.aligner} \\
     --samples {config.samples_list} \\
     --reads-dir {config.reads_dir} \\
     --strandedness {config.strandedness} \\
@@ -204,7 +254,7 @@ conda = "envs/multiqc.yaml"
 
 [[rules]]
 name = "multiqc"
-description = "MultiQC report (nf-core MULTIQC merged mode, results/multiqc/star_salmon)"
+description = "MultiQC report (nf-core MULTIQC merged mode, results/multiqc/{config.aligner})"
 input = [
     "{config.out_dir}/multiqc/fail_trimmed_samples_mqc.tsv",
     "{config.out_dir}/multiqc/fail_mapped_samples_mqc.tsv",
@@ -213,16 +263,23 @@ input = [
     "{config.out_dir}/multiqc/name_replacement.txt",
     "{config.out_dir}/multiqc/multiqc_sample_merge.yml",
     "{config.out_dir}/multiqc/nf_core_rnaseq_software_mqc_versions.yml",
-    "{config.out_dir}/star_salmon/deseq2_qc/star_salmon.pca.vals_mqc.tsv",
-    "{config.out_dir}/star_salmon/deseq2_qc/star_salmon.sample.dists_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.pca.vals_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.sample.dists_mqc.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.pca.vals_mqc.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.sample.dists_mqc.tsv",
     "assets/multiqc/multiqc_config.yml",
 ]
 expand_inputs = [
     # FastQC raw + trimmed (html + zip), trimgalore reports, STAR logs,
-    # salmon quant.sf, samtools stats/flagstat/idxstats for sorted and
-    # markdup BAMs, picard metrics, featureCounts summary + biotype tables,
-    # RSeQC outputs, dupRadar MultiQC tables, Qualimap results (staged into
-    # <id>/ subdirs).
+    # salmon quant.sf (alignment + pseudo modes, staged into <id>/ subdirs),
+    # samtools stats/flagstat/idxstats for sorted, markdup and UMI-deduped
+    # BAMs, picard metrics, featureCounts summary + biotype tables, RSeQC
+    # outputs, dupRadar MultiQC tables, Qualimap results (staged into <id>/
+    # subdirs), UMI-tools genome-side dedup logs, RSEM per-sample .stat
+    # files. The patterns mirror the upstream MultiQC channels exactly:
+    # transcriptome-side dedup stats, the umitools per-UMI TSVs and the
+    # prepare-for-rsem logs are emitted by the UMI subworkflow but never
+    # mixed into its multiqc_files channel, so they stay out of the report.
     # NOTE: patterns keep a literal {config.out_dir} prefix (no out_dir
     # variable): DAG edges are exact-string matches, and {config.out_dir}
     # resolves at render time. A concrete "results/..." prefix would not match
@@ -242,31 +299,37 @@ expand_inputs = [
     { pattern = "{config.out_dir}/fastqc/trim/{sample}_trimmed_2_val_2_fastqc.zip", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_1.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_2.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/log/{sample}.Log.final.out", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.stats", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.stats", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/picard_metrics/{sample}.markdup.sorted.metrics.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/featurecounts/{sample}.featureCounts.tsv.summary", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/featurecounts/{sample}.biotype_counts_mqc.tsv", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/featurecounts/{sample}.biotype_counts_rrna_mqc.tsv", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/bam_stat/{sample}.bam_stat.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/infer_experiment/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance_freq.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/junction_annotation/log/{sample}.junction_annotation.log", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/read_distribution/{sample}.read_distribution.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/rseqc/read_duplication/xls/{sample}.pos.DupRate.xls", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/dupradar/multiqc/{sample}_dup_intercept_mqc.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/dupradar/multiqc/{sample}_duprateExpDensCurve_mqc.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "{config.out_dir}/star_salmon/qualimap/{sample}/rnaseq_qc_results.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.stats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.stats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/picard_metrics/{sample}.markdup.sorted.metrics.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/featurecounts/{sample}.featureCounts.tsv.summary", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/featurecounts/{sample}.biotype_counts_mqc.tsv", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/featurecounts/{sample}.biotype_counts_rrna_mqc.tsv", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/bam_stat/{sample}.bam_stat.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/infer_experiment/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/{sample}.inner_distance_freq.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/log/{sample}.junction_annotation.log", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/read_distribution/{sample}.read_distribution.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/read_duplication/xls/{sample}.pos.DupRate.xls", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/dupradar/multiqc/{sample}_dup_intercept_mqc.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/dupradar/multiqc/{sample}_duprateExpDensCurve_mqc.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/qualimap/{sample}/rnaseq_qc_results.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/{sample}.umi_dedup.sorted.log", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.stats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}.stat", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
 ]
 output = [
-    "{config.out_dir}/multiqc/star_salmon/multiqc_report.html",
+    "{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html",
 ]
 shell = """
 # Stage every contributor into one flat directory so the merged MultiQC run
@@ -293,7 +356,7 @@ for f in {input}; do
 done
 cd mqc_stage
 multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --filename multiqc_report.html --replace-names name_replacement.txt .
-mv multiqc_report.html ../{config.out_dir}/multiqc/star_salmon/multiqc_report.html
+mv multiqc_report.html ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 cd ..
 rm -rf mqc_stage
 """

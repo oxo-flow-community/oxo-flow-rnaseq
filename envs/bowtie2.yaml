@@ -1,0 +1,10 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 BOWTIE2_ALIGN module
+# environment (modules/nf-core/bowtie2/align/environment.yml).
+name: bowtie2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::bowtie2=2.5.4
+  - bioconda::htslib=1.21
+  - bioconda::samtools=1.21
