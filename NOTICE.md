@@ -38,3 +38,28 @@ Copied files that retain upstream MIT headers and attribution:
 - assets/multiqc/* — from subworkflows/local/multiqc_rnaseq/assets/*
   (multiqc_config.yml, biotypes_header.txt, sample_status_header.txt,
   strand_check_summary.yaml, strand_check_composition.yaml)
+
+Ported subworkflows/modules (commands and file naming transcribed from the
+upstream sources below; no files copied verbatim):
+
+- subworkflows/nf-core/bam_dedup_umi (UMI-tools / UMICollapse genome and
+  transcriptome dedup chains, name-sort, prepare-for-rsem)
+- subworkflows/nf-core/bam_sort_stats_samtools (transcriptome name/coordinate
+  sorts)
+- subworkflows/nf-core/bam_dedup_stats_samtools_umitools and
+  bam_dedup_stats_samtools_umicollapse (dedup-side stats)
+- subworkflows/nf-core/quantify_rsem (RSEM index, calculateexpression,
+  custom/rsemmergecounts)
+- subworkflows/nf-core/quantify_pseudo_alignment (salmon/index + salmon/quant
+  pseudo mode)
+- subworkflows/nf-core/quant_tximport_summarizedexperiment (tximport /
+  tximeta, summarizedexperiment) — extended with the rsem and pseudo variants
+- modules/nf-core/hisat2/{align,index,extractsplicesites},
+  bowtie2/align, bbmap/bbsplit, sortmerna/sortmerna,
+  umitools/{extract,dedup,prepareforrsem}, umicollapse/umicollapse,
+  rsem/{preparereference,calculateexpression}, custom/rsemmergecounts
+- workflows/rnaseq/main.nf branch wiring for the star_rsem / hisat2 /
+  with_umi / pseudo_aligner configurations, and conf/modules/{
+  umi_dedup,quantify_bam_salmon,quantify_rsem,quantify_pseudo_alignment,
+  deseq2_qc,prepare_genome,align_hisat2,align_star}.config resource labels
+  and args

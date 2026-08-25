@@ -1,15 +1,25 @@
-# Alignment fragment: nf-core/rnaseq ALIGN_STAR + BAM_SORT_STATS_SAMTOOLS +
-# BAM_MARKDUPLICATES_PICARD (default star_salmon path).
+# Alignment fragment: nf-core/rnaseq ALIGN_STAR + ALIGN_HISAT2 +
+# BAM_SORT_STATS_SAMTOOLS + BAM_DEDUP_UMI (genome side) +
+# BAM_MARKDUPLICATES_PICARD (star_salmon / star_rsem / hisat2 paths).
 #
 # Rule -> upstream process (label: cpus/memory/time):
-#   star_align             STAR_ALIGN           (process_high: 12/72G/16h)
-#   samtools_sort          SAMTOOLS_SORT        (process_medium: 6/36G/8h)
+#   star_align (+bbsplit/sortmerna/bowtie2 read-source variants)
+#                      STAR_ALIGN           (process_high: 12/72G/16h)
+#   star_align_rsem (+3 variants) STAR_ALIGN (star_rsem quantifier args)
+#   hisat2_splicesites HISAT2_EXTRACTSPLICESITES (process_medium: 2/12G/4h)
+#   hisat2_index       HISAT2_BUILD        (process_high+high_memory: 12/200G)
+#   hisat2_align (+3 read-source variants) HISAT2_ALIGN (process_high: 12/72G/16h)
+#   samtools_sort / samtools_sort_hisat2 SAMTOOLS_SORT (process_medium: 6/36G/8h)
 #   samtools_index_sorted  SAMTOOLS_INDEX       (process_low: 2/12G/4h)
 #   samtools_stats_sorted  SAMTOOLS_STATS       (process_single: 1/6G/4h)
 #   samtools_flagstat_sorted  SAMTOOLS_FLAGSTAT (process_single: 1/6G/4h)
 #   samtools_idxstats_sorted  SAMTOOLS_IDXSTATS (process_single: 1/6G/4h)
 #   picard_markduplicates  PICARD_MARKDUPLICATES (process_medium: 6/36G/8h)
 #   samtools_index_markdup / stats / flagstat / idxstats (labels as above)
+#   bam_dedup_genome_umitools(+primary/+stats variants) UMITOOLS_DEDUP (6/36G)
+#   bam_dedup_genome_umicollapse    UMICOLLAPSE (process_high+high_memory: 12/200G)
+#   samtools_view_primary / index_primary / index_dedup / stats / flagstat /
+#   idxstats_dedup                  (labels as above)
 #
 # Upstream publish behaviour reproduced: the sorted/unsorted/intermediate BAMs
 # are only published when save_align_intermeds (or skip_markduplicates); the
@@ -40,34 +50,455 @@ input = [
     "{config.gtf}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/log/{sample}.Log.final.out",
-    "{config.out_dir}/star_salmon/log/{sample}.Log.out",
-    "{config.out_dir}/star_salmon/log/{sample}.Log.progress.out",
-    "{config.out_dir}/star_salmon/log/{sample}.SJ.out.tab",
-    "{config.out_dir}/star_salmon/{sample}.Aligned.out.bam",
-    "{config.out_dir}/star_salmon/{sample}.Aligned.toTranscriptome.out.bam",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
 ]
 shell = """
 set -euo pipefail
 STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
-mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/star_salmon/log/
-mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/star_salmon/
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
 """
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && config.skip_bbsplit && !config.remove_ribo_rna"
 [rules.resources]
 threads = 12
 memory = "72G"
 [rules.environment]
 conda = "envs/star.yaml"
 
+# STAR_ALIGN read-source variants (FASTQ_QC branches): identical command and
+# outputs, reads come from the BBSplit / SortMeRNA / Bowtie2 rRNA-removal
+# filtered-reads channels instead of the trimmed reads. Gates are mutually
+# exclusive per config state (exactly one fires).
+[[rules]]
+name = "star_align_bbsplit"
+description = "STAR alignment on BBSplit-filtered reads (nf-core STAR_ALIGN, star_salmon args)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && !config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_sortmerna"
+description = "STAR alignment on SortMeRNA non-rRNA reads (nf-core STAR_ALIGN, star_salmon args)"
+input = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_bowtie2"
+description = "STAR alignment on Bowtie2-filtered reads (nf-core STAR_ALIGN, star_salmon args)"
+input = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+# STAR_ALIGN with the star_rsem quantifier args (upstream align_star.config
+# 'rsem' branch: no --twopassMode / --runRNGseed / --outSAMstrandField /
+# --quantTranscriptomeSAMoutput; adds the RSEM-oriented filtering flags).
+# Same four FASTQ_QC read-source variants as the star_salmon rules.
+[[rules]]
+name = "star_align_rsem"
+description = "STAR alignment with star_rsem args on trimmed reads (nf-core STAR_ALIGN)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --outSAMunmapped Within --outFilterType BySJout --outFilterMultimapNmax 20 --outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04 --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --alignSJoverhangMin 8 --alignSJDBoverhangMin 1 --sjdbScore 1 --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_rsem_bbsplit"
+description = "STAR alignment with star_rsem args on BBSplit-filtered reads (nf-core STAR_ALIGN)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --outSAMunmapped Within --outFilterType BySJout --outFilterMultimapNmax 20 --outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04 --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --alignSJoverhangMin 8 --alignSJDBoverhangMin 1 --sjdbScore 1 --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && !config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_rsem_sortmerna"
+description = "STAR alignment with star_rsem args on SortMeRNA non-rRNA reads (nf-core STAR_ALIGN)"
+input = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --outSAMunmapped Within --outFilterType BySJout --outFilterMultimapNmax 20 --outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04 --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --alignSJoverhangMin 8 --alignSJDBoverhangMin 1 --sjdbScore 1 --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_rsem_bowtie2"
+description = "STAR alignment with star_rsem args on Bowtie2-filtered reads (nf-core STAR_ALIGN)"
+input = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
+    "{config.star_index}",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --outSAMunmapped Within --outFilterType BySJout --outFilterMultimapNmax 20 --outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04 --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --alignSJoverhangMin 8 --alignSJDBoverhangMin 1 --sjdbScore 1 --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
+# HISAT2_EXTRACTSPLICESITES (process_medium: 2/12G/4h). Upstream output name
+# is {gtf.baseName}.splice_sites.txt; the port uses a fixed canonical path
+# under reference/ (the hisat2 index builder and align rules consume it).
+[[rules]]
+name = "hisat2_splicesites"
+description = "Extract splice sites from GTF for HISAT2 (nf-core HISAT2_EXTRACTSPLICESITES)"
+input = ["{config.gtf}"]
+output = ["{config.out_dir}/reference/genes.splice_sites.txt"]
+shell = """
+hisat2_extract_splice_sites.py {input[0]} > {output[0]}
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/hisat2.yaml"
+
+# HISAT2_BUILD (process_high + process_high_memory: 12/200G). Upstream runs
+# the --ss/--exon branch when avail_mem >= hisat2_build_memory (default 200GB
+# == the label memory, so the branch is taken). User-supplied index
+# (config.hisat2_index) short-circuits via symlink like the other builders.
+[[rules]]
+name = "hisat2_index"
+description = "Build HISAT2 index with splice sites and exons (nf-core HISAT2_BUILD, or symlink a user-supplied index)"
+input = [
+    "{config.fasta}",
+    "{config.gtf}",
+    "{config.out_dir}/reference/genes.splice_sites.txt",
+]
+output = ["{config.out_dir}/reference/hisat2_index"]
+shell = """
+set -euo pipefail
+if [ -n "{config.hisat2_index}" ]; then
+    mkdir -p {config.out_dir}/reference
+    ln -s {config.hisat2_index} {config.out_dir}/reference/hisat2_index
+    exit 0
+fi
+GENOME_BASE=$(basename {input[0]} .fa)
+EXONS_FILE=$(basename {input[1]} .gtf).exons.txt
+mkdir -p {config.out_dir}/reference
+mkdir hisat2
+hisat2_extract_exons.py {input[1]} > ${EXONS_FILE}
+hisat2-build -p 12 --ss {input[2]} --exon ${EXONS_FILE} {input[0]} hisat2/${GENOME_BASE}
+mv hisat2 {output[0]}
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment"
+[rules.resources]
+threads = 12
+memory = "200G"
+[rules.environment]
+conda = "envs/hisat2.yaml"
+
+# HISAT2_ALIGN (process_high: 12/72G/16h). Command mirrors the upstream
+# module with align_hisat2.config args (--met-stderr --new-summary --dta plus
+# the RG tags); --rna-strandness is rendered from config.strandedness like
+# the module's meta.strandedness branch (FR for forward / RF for reverse /
+# omitted when unstranded). The four FASTQ_QC read-source variants follow.
+[[rules]]
+name = "hisat2_align"
+description = "HISAT2 alignment on trimmed reads (nf-core HISAT2_ALIGN, prefix <id>)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/reference/hisat2_index",
+    "{config.out_dir}/reference/genes.splice_sites.txt",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.bam",
+    "{config.out_dir}/{config.aligner}/log/{sample}.hisat2.summary.log",
+]
+shell = """
+set -euo pipefail
+STRAND=""
+if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
+hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.bam {config.out_dir}/{config.aligner}/
+mv {sample}.hisat2.summary.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment && config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/hisat2.yaml"
+
+[[rules]]
+name = "hisat2_align_bbsplit"
+description = "HISAT2 alignment on BBSplit-filtered reads (nf-core HISAT2_ALIGN, prefix <id>)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.out_dir}/reference/hisat2_index",
+    "{config.out_dir}/reference/genes.splice_sites.txt",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.bam",
+    "{config.out_dir}/{config.aligner}/log/{sample}.hisat2.summary.log",
+]
+shell = """
+set -euo pipefail
+STRAND=""
+if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
+hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.bam {config.out_dir}/{config.aligner}/
+mv {sample}.hisat2.summary.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment && !config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/hisat2.yaml"
+
+[[rules]]
+name = "hisat2_align_sortmerna"
+description = "HISAT2 alignment on SortMeRNA non-rRNA reads (nf-core HISAT2_ALIGN, prefix <id>)"
+input = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/reference/hisat2_index",
+    "{config.out_dir}/reference/genes.splice_sites.txt",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.bam",
+    "{config.out_dir}/{config.aligner}/log/{sample}.hisat2.summary.log",
+]
+shell = """
+set -euo pipefail
+STRAND=""
+if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
+hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.bam {config.out_dir}/{config.aligner}/
+mv {sample}.hisat2.summary.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/hisat2.yaml"
+
+[[rules]]
+name = "hisat2_align_bowtie2"
+description = "HISAT2 alignment on Bowtie2-filtered reads (nf-core HISAT2_ALIGN, prefix <id>)"
+input = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
+    "{config.out_dir}/reference/hisat2_index",
+    "{config.out_dir}/reference/genes.splice_sites.txt",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.bam",
+    "{config.out_dir}/{config.aligner}/log/{sample}.hisat2.summary.log",
+]
+shell = """
+set -euo pipefail
+STRAND=""
+if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
+hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.bam {config.out_dir}/{config.aligner}/
+mv {sample}.hisat2.summary.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/hisat2.yaml"
+
+# SAMTOOLS_SORT (hisat2 side): the FASTQ_ALIGN_HISAT2 subworkflow sorts
+# {sample}.bam with the same BAM_SORT_STATS_SAMTOOLS process. Outputs land on
+# the shared {sample}.sorted.bam path so the existing sorted-side index/stats
+# rules serve both aligners.
+[[rules]]
+name = "samtools_sort_hisat2"
+description = "Coordinate-sort HISAT2 BAM (nf-core SAMTOOLS_SORT in FASTQ_ALIGN_HISAT2, prefix <id>.sorted)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.sorted.bam"]
+shell = """
+samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
 # SAMTOOLS_SORT: samtools cat <unsorted> | samtools sort -T <id>.sorted --threads 6 --reference <fasta> -o <id>.sorted.bam -
 [[rules]]
 name = "samtools_sort"
 description = "Coordinate-sort STAR BAM (nf-core SAMTOOLS_SORT in BAM_SORT_STATS_SAMTOOLS, prefix <id>.sorted)"
-input = ["{config.out_dir}/star_salmon/{sample}.Aligned.out.bam"]
-output = ["{config.out_dir}/star_salmon/{sample}.sorted.bam"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.sorted.bam"]
 shell = """
 samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
 """
+when = "config.aligner != 'hisat2'"
 [rules.resources]
 threads = 6
 memory = "36G"
@@ -78,8 +509,8 @@ conda = "envs/samtools.yaml"
 [[rules]]
 name = "samtools_index_sorted"
 description = "Index sorted BAM (nf-core SAMTOOLS_INDEX)"
-input = ["{config.out_dir}/star_salmon/{sample}.sorted.bam"]
-output = ["{config.out_dir}/star_salmon/{sample}.sorted.bam.bai"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai"]
 shell = """
 samtools index -@ 2 {input[0]}
 """
@@ -94,10 +525,10 @@ conda = "envs/samtools.yaml"
 name = "samtools_stats_sorted"
 description = "samtools stats on sorted BAM (nf-core SAMTOOLS_STATS, prefix <id>.sorted.bam)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai",
 ]
-output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.stats"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.stats"]
 shell = """
 # the .bai is a declared input for invalidation, NOT a region —
 # (live: passing it positionally made samtools treat it as a region:
@@ -114,10 +545,10 @@ conda = "envs/samtools.yaml"
 name = "samtools_flagstat_sorted"
 description = "samtools flagstat on sorted BAM (nf-core SAMTOOLS_FLAGSTAT, prefix <id>.sorted.bam)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai",
 ]
-output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.flagstat"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.flagstat"]
 shell = """
 samtools flagstat --threads 1 {input[0]} > {output[0]}
 """
@@ -131,10 +562,10 @@ conda = "envs/samtools.yaml"
 name = "samtools_idxstats_sorted"
 description = "samtools idxstats on sorted BAM (nf-core SAMTOOLS_IDXSTATS, prefix <id>.sorted.bam)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai",
 ]
-output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.sorted.bam.idxstats"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.idxstats"]
 shell = """
 samtools idxstats --threads 0 {input[0]} > {output[0]}
 """
@@ -153,18 +584,18 @@ conda = "envs/samtools.yaml"
 name = "picard_markduplicates"
 description = "Mark duplicates with Picard (nf-core PICARD_MARKDUPLICATES, -Xmx29491M, prefix <id>.markdup.sorted)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
     "{config.fasta}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/picard_metrics/{sample}.markdup.sorted.metrics.txt",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/picard_metrics/{sample}.markdup.sorted.metrics.txt",
 ]
 shell = """
 mkdir -p tmp
 picard -Xmx{effective_memory_mb}m MarkDuplicates --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp --INPUT {input[0]} --OUTPUT {output[0]} --REFERENCE_SEQUENCE {input[1]} --METRICS_FILE {output[1]}
 """
-when = "!config.skip_markduplicates"
+when = "!config.skip_markduplicates && !config.with_umi"
 [rules.resources]
 threads = 6
 memory = "36G"
@@ -172,16 +603,17 @@ memory = "36G"
 conda = "envs/picard.yaml"
 
 # Markdup-side index + BAM stats (BAM_MARKDUPLICATES_PICARD SAMTOOLS_INDEX /
-# BAM_STATS_SAMTOOLS, prefix <id>.markdup.sorted(.bam))
+# BAM_STATS_SAMTOOLS, prefix <id>.markdup.sorted(.bam)). Skipped when
+# with_umi (upstream: `if (!skip_markduplicates && !with_umi && !markdups_done)`)
 [[rules]]
 name = "samtools_index_markdup"
 description = "Index markdup BAM (nf-core SAMTOOLS_INDEX)"
-input = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam"]
-output = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai"]
 shell = """
 samtools index -@ 2 {input[0]}
 """
-when = "!config.skip_markduplicates"
+when = "!config.skip_markduplicates && !config.with_umi"
 [rules.resources]
 threads = 2
 memory = "12G"
@@ -192,17 +624,17 @@ conda = "envs/samtools.yaml"
 name = "samtools_stats_markdup"
 description = "samtools stats on markdup BAM (nf-core SAMTOOLS_STATS, prefix <id>.markdup.sorted.bam)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
 ]
-output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.stats"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.stats"]
 shell = """
 # the .bai is a declared input for invalidation, NOT a region —
 # (live: passing it positionally made samtools treat it as a region:
 # "Region '...bam.bai' specifies an unknown reference name")
 samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
 """
-when = "!config.skip_markduplicates"
+when = "!config.skip_markduplicates && !config.with_umi"
 [rules.resources]
 threads = 1
 memory = "6G"
@@ -213,14 +645,14 @@ conda = "envs/samtools.yaml"
 name = "samtools_flagstat_markdup"
 description = "samtools flagstat on markdup BAM (nf-core SAMTOOLS_FLAGSTAT, prefix <id>.markdup.sorted.bam)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
 ]
-output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.flagstat"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.flagstat"]
 shell = """
 samtools flagstat --threads 1 {input[0]} > {output[0]}
 """
-when = "!config.skip_markduplicates"
+when = "!config.skip_markduplicates && !config.with_umi"
 [rules.resources]
 threads = 1
 memory = "6G"
@@ -231,14 +663,284 @@ conda = "envs/samtools.yaml"
 name = "samtools_idxstats_markdup"
 description = "samtools idxstats on markdup BAM (nf-core SAMTOOLS_IDXSTATS, prefix <id>.markdup.sorted.bam)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
 ]
-output = ["{config.out_dir}/star_salmon/samtools_stats/{sample}.markdup.sorted.bam.idxstats"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.idxstats"]
 shell = """
 samtools idxstats --threads 0 {input[0]} > {output[0]}
 """
-when = "!config.skip_markduplicates"
+when = "!config.skip_markduplicates && !config.with_umi"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# ---------------------------------------------------------------------------
+# UMI deduplication of the genome BAM (BAM_DEDUP_UMI genome side).
+#
+# Upstream `if (!skip_alignment && with_umi)` runs for EVERY aligner (incl.
+# hisat2); the transcriptome side (empty for hisat2) is ported in
+# quantification.oxoflow. With with_umi, Picard markduplicates is skipped and
+# the UMI-deduped BAM becomes the final genome BAM; the port writes it to the
+# shared {sample}.markdup.sorted.bam path so the downstream StringTie / QC /
+# bigwig rules (which consume that path) resolve it unchanged.
+#
+#   bam_dedup_genome_umitools            UMITOOLS_DEDUP        (process_medium: 6/36G)
+#   bam_dedup_genome_umitools_primary    SAMTOOLS_VIEW_PRIMARY + UMITOOLS_DEDUP
+#   bam_dedup_genome_umitools_stats      UMITOOLS_DEDUP with --output-stats (3 TSVs)
+#   bam_dedup_genome_umicollapse         UMICOLLAPSE           (process_high+high_memory: 12/200G)
+#   samtools_view_primary / index_primary  SAMTOOLS_VIEW_PRIMARY / SAMTOOLS_INDEX_PRIMARY
+#   samtools_index_dedup + stats/flagstat/idxstats_dedup  SAMTOOLS_INDEX + BAM_STATS_SAMTOOLS
+#     (prefix <id>.umi_dedup.sorted.bam — upstream umi_dedup.config)
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "samtools_view_primary"
+description = "Filter to primary alignments before UMI-tools dedup (nf-core SAMTOOLS_VIEW_PRIMARY, -F 0x900 -b, prefix <id>.primary)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai",
+]
+output = ["{config.out_dir}/{config.aligner}/{sample}.primary.bam"]
+shell = """
+samtools view --threads 1 -F 0x900 -b -o {output[0]} {input[0]}
+"""
+when = "config.with_umi && !config.skip_alignment && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_index_primary"
+description = "Index primary-filtered BAM (nf-core SAMTOOLS_INDEX_PRIMARY)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.primary.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.primary.bam.bai"]
+shell = """
+samtools index -@ 2 {input[0]}
+"""
+when = "config.with_umi && !config.skip_alignment && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "bam_dedup_genome_umitools"
+description = "UMI-tools dedup of the genome BAM (nf-core UMITOOLS_DEDUP, prefix <id>.umi_dedup.sorted)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/{sample}.umi_dedup.sorted.log",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.markdup.sorted.bam -L {sample}.umi_dedup.sorted.log --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log
+mv {sample}.markdup.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.sorted.log {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/
+"""
+when = "config.with_umi && !config.skip_alignment && config.umi_dedup_tool == 'umitools' && !config.umitools_dedup_primary_only && !config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_genome_umitools_primary"
+description = "UMI-tools dedup of the primary-filtered genome BAM (nf-core SAMTOOLS_VIEW_PRIMARY + UMITOOLS_DEDUP)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.primary.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.primary.bam.bai",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/{sample}.umi_dedup.sorted.log",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.markdup.sorted.bam -L {sample}.umi_dedup.sorted.log --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log
+mv {sample}.markdup.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.sorted.log {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/
+"""
+when = "config.with_umi && !config.skip_alignment && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only && !config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_genome_umitools_stats"
+description = "UMI-tools dedup with --output-stats TSVs (nf-core UMITOOLS_DEDUP + umitools_dedup_stats)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/{sample}.umi_dedup.sorted.log",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.sorted_edit_distance.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.sorted_per_umi.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.sorted_per_position.tsv",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.markdup.sorted.bam -L {sample}.umi_dedup.sorted.log --output-stats {sample}.umi_dedup.sorted --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log
+mv {sample}.markdup.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.sorted.log {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/
+mv {sample}.umi_dedup.sorted_edit_distance.tsv {sample}.umi_dedup.sorted_per_umi.tsv {sample}.umi_dedup.sorted_per_position.tsv {config.out_dir}/{config.aligner}/umitools/
+"""
+when = "config.with_umi && !config.skip_alignment && config.umi_dedup_tool == 'umitools' && !config.umitools_dedup_primary_only && config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_genome_umitools_primary_stats"
+description = "UMI-tools dedup with --output-stats TSVs on primary-filtered BAM (nf-core SAMTOOLS_VIEW_PRIMARY + UMITOOLS_DEDUP)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.primary.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.primary.bam.bai",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/{sample}.umi_dedup.sorted.log",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.sorted_edit_distance.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.sorted_per_umi.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.sorted_per_position.tsv",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.markdup.sorted.bam -L {sample}.umi_dedup.sorted.log --output-stats {sample}.umi_dedup.sorted --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log
+mv {sample}.markdup.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.sorted.log {config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/
+mv {sample}.umi_dedup.sorted_edit_distance.tsv {sample}.umi_dedup.sorted_per_umi.tsv {sample}.umi_dedup.sorted_per_position.tsv {config.out_dir}/{config.aligner}/umitools/
+"""
+when = "config.with_umi && !config.skip_alignment && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only && config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_genome_umicollapse"
+description = "UMI dedup with umicollapse in bam mode (nf-core UMICOLLAPSE, prefix <id>.umi_dedup.sorted)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.sorted.bam.bai",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umicollapse/genomic_dedup_log/{sample}.umi_dedup.sorted_UMICollapse.log",
+]
+shell = """
+set -euo pipefail
+# Getting the umicollapse jar file like this because `umicollapse` is a Python wrapper script generated
+# by conda that allows to set the heap size (Xmx), but not the stack size (Xss).
+# `which` allows us to get the directory that contains `umicollapse`, independent of whether we
+# are in a container or conda environment.
+UMICOLLAPSE_JAR=$(dirname $(which umicollapse))/../share/umicollapse-1.1.0-0/umicollapse.jar
+java -Xmx184320M -Xss999M -jar $UMICOLLAPSE_JAR bam -i {input[0]} -o {sample}.markdup.sorted.bam --two-pass --paired --remove-unpaired --remove-chimeric --algo 'dir' | tee {sample}.umi_dedup.sorted_UMICollapse.log
+mkdir -p {config.out_dir}/{config.aligner}/umicollapse/genomic_dedup_log
+mv {sample}.markdup.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.sorted_UMICollapse.log {config.out_dir}/{config.aligner}/umicollapse/genomic_dedup_log/
+"""
+when = "config.with_umi && !config.skip_alignment && config.umi_dedup_tool == 'umicollapse'"
+[rules.resources]
+threads = 12
+memory = "200G"
+[rules.environment]
+conda = "envs/umicollapse.yaml"
+
+# Dedup-side index + stats: the deduped BAM occupies the shared
+# markdup.sorted.bam path; the index rule mirrors the markdup-side one and
+# the stats rules keep the upstream <id>.umi_dedup.sorted.bam prefixes.
+[[rules]]
+name = "samtools_index_dedup"
+description = "Index UMI-deduped BAM (nf-core SAMTOOLS_INDEX in BAM_DEDUP_STATS_SAMTOOLS_UMITOOLS/UMICOLLAPSE)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai"]
+shell = """
+samtools index -@ 2 {input[0]}
+"""
+when = "config.with_umi && !config.skip_alignment"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_stats_dedup"
+description = "samtools stats on UMI-deduped BAM (nf-core SAMTOOLS_STATS, prefix <id>.umi_dedup.sorted.bam)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
+]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.stats"]
+shell = """
+samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
+"""
+when = "config.with_umi && !config.skip_alignment"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_flagstat_dedup"
+description = "samtools flagstat on UMI-deduped BAM (nf-core SAMTOOLS_FLAGSTAT, prefix <id>.umi_dedup.sorted.bam)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
+]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.flagstat"]
+shell = """
+samtools flagstat --threads 1 {input[0]} > {output[0]}
+"""
+when = "config.with_umi && !config.skip_alignment"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_idxstats_dedup"
+description = "samtools idxstats on UMI-deduped BAM (nf-core SAMTOOLS_IDXSTATS, prefix <id>.umi_dedup.sorted.bam)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
+]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.idxstats"]
+shell = """
+samtools idxstats --threads 0 {input[0]} > {output[0]}
+"""
+when = "config.with_umi && !config.skip_alignment"
 [rules.resources]
 threads = 1
 memory = "6G"

@@ -23,8 +23,8 @@ description = "bigWig coverage tracks: strand-specific and combined genome cover
 [[rules]]
 name = "genomecov_fw"
 description = "Forward-strand genome coverage (nf-core BEDTOOLS_GENOMECOV_FW, -split -du -strand + -bg)"
-input = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam"]
-output = ["{config.out_dir}/star_salmon/{sample}.forward.bedGraph"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.forward.bedGraph"]
 shell = """
 bedtools genomecov -ibam {input[0]} -split -du -strand + -bg | LC_ALL=C sort --parallel=1 --buffer-size=3G -k1,1 -k2,2n > {output[0]}
 """
@@ -38,8 +38,8 @@ conda = "envs/bedtools.yaml"
 [[rules]]
 name = "genomecov_rev"
 description = "Reverse-strand genome coverage (nf-core BEDTOOLS_GENOMECOV_REV, -split -du -strand - -bg)"
-input = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam"]
-output = ["{config.out_dir}/star_salmon/{sample}.reverse.bedGraph"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.reverse.bedGraph"]
 shell = """
 bedtools genomecov -ibam {input[0]} -split -du -strand - -bg | LC_ALL=C sort --parallel=1 --buffer-size=3G -k1,1 -k2,2n > {output[0]}
 """
@@ -53,8 +53,8 @@ conda = "envs/bedtools.yaml"
 [[rules]]
 name = "genomecov_combined"
 description = "Combined genome coverage (nf-core BEDTOOLS_GENOMECOV_COMBINED, -split -bg)"
-input = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam"]
-output = ["{config.out_dir}/star_salmon/{sample}.bedGraph"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.bedGraph"]
 shell = """
 bedtools genomecov -ibam {input[0]} -split -bg | LC_ALL=C sort --parallel=1 --buffer-size=3G -k1,1 -k2,2n > {output[0]}
 """
@@ -69,8 +69,8 @@ conda = "envs/bedtools.yaml"
 [[rules]]
 name = "bedclip_fw"
 description = "Clip forward bedGraph to chrom sizes (nf-core UCSC_BEDCLIP, prefix <id>.clip.forward)"
-input = ["{config.out_dir}/star_salmon/{sample}.forward.bedGraph", "{config.chrom_sizes}"]
-output = ["{config.out_dir}/star_salmon/{sample}.clip.forward.bedGraph"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.forward.bedGraph", "{config.chrom_sizes}"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.clip.forward.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
 """
@@ -84,8 +84,8 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bedclip_rev"
 description = "Clip reverse bedGraph to chrom sizes (nf-core UCSC_BEDCLIP, prefix <id>.clip.reverse)"
-input = ["{config.out_dir}/star_salmon/{sample}.reverse.bedGraph", "{config.chrom_sizes}"]
-output = ["{config.out_dir}/star_salmon/{sample}.clip.reverse.bedGraph"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.reverse.bedGraph", "{config.chrom_sizes}"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.clip.reverse.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
 """
@@ -99,8 +99,8 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bedclip_combined"
 description = "Clip combined bedGraph to chrom sizes (nf-core UCSC_BEDCLIP, prefix <id>.clip)"
-input = ["{config.out_dir}/star_salmon/{sample}.bedGraph", "{config.chrom_sizes}"]
-output = ["{config.out_dir}/star_salmon/{sample}.clip.bedGraph"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.bedGraph", "{config.chrom_sizes}"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.clip.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
 """
@@ -115,8 +115,8 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bigwig_fw"
 description = "Forward-strand bigWig (nf-core UCSC_BEDGRAPHTOBIGWIG, prefix <id>.forward)"
-input = ["{config.out_dir}/star_salmon/{sample}.clip.forward.bedGraph", "{config.chrom_sizes}"]
-output = ["{config.out_dir}/star_salmon/bigwig/{sample}.forward.bigWig"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.clip.forward.bedGraph", "{config.chrom_sizes}"]
+output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.forward.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}
 """
@@ -130,8 +130,8 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bigwig_rev"
 description = "Reverse-strand bigWig (nf-core UCSC_BEDGRAPHTOBIGWIG, prefix <id>.reverse)"
-input = ["{config.out_dir}/star_salmon/{sample}.clip.reverse.bedGraph", "{config.chrom_sizes}"]
-output = ["{config.out_dir}/star_salmon/bigwig/{sample}.reverse.bigWig"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.clip.reverse.bedGraph", "{config.chrom_sizes}"]
+output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.reverse.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}
 """
@@ -145,8 +145,8 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bigwig_combined"
 description = "Combined bigWig (nf-core UCSC_BEDGRAPHTOBIGWIG, prefix <id>)"
-input = ["{config.out_dir}/star_salmon/{sample}.clip.bedGraph", "{config.chrom_sizes}"]
-output = ["{config.out_dir}/star_salmon/bigwig/{sample}.bigWig"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.clip.bedGraph", "{config.chrom_sizes}"]
+output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}
 """

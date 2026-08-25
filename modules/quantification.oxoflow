@@ -26,14 +26,14 @@ version = "1.0.0"
 name = "salmon_quant"
 description = "Salmon quantification (alignment mode) of the STAR toTranscriptome BAM (nf-core SALMON_QUANT, --geneMap gtf, --libType from strandedness)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.Aligned.toTranscriptome.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
     "{config.gtf}",
     "{config.transcript_fasta}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/{sample}/quant.sf",
-    "{config.out_dir}/star_salmon/{sample}/quant.genes.sf",
-    "{config.out_dir}/star_salmon/{sample}/logs/salmon_quant.log",
+    "{config.out_dir}/{config.aligner}/{sample}/quant.sf",
+    "{config.out_dir}/{config.aligner}/{sample}/quant.genes.sf",
+    "{config.out_dir}/{config.aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
 case "{config.strandedness}" in
@@ -51,8 +51,9 @@ salmon quant \\
     --libType=$LIBTYPE \\
     -t {input[2]} \\
     -a {input[0]} \\
-    -o {config.out_dir}/star_salmon/{sample}
+    -o {config.out_dir}/{config.aligner}/{sample}
 """
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && !config.with_umi"
 [rules.resources]
 threads = 6
 memory = "36G"
@@ -70,19 +71,20 @@ name = "tx2gene"
 description = "Build transcript-to-gene mapping from the GTF (nf-core CUSTOM_TX2GENE, gene_id/gene_name attributes, first sample's quant dir)"
 input = ["{config.gtf}"]
 output = [
-    "{config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.tx2gene.tsv",
 ]
-depends_on = ["salmon_quant"]
+depends_on = ["salmon_quant", "salmon_quant_umi"]
 shell = """
 FIRST_SAMPLE=$(printf "%s" "{config.samples_list}" | cut -d, -f1)
 python scripts/tx2gene.py \\
-    --quant-dir {config.out_dir}/star_salmon/$FIRST_SAMPLE \\
+    --quant-dir {config.out_dir}/{config.aligner}/$FIRST_SAMPLE \\
     --gtf {input[0]} \\
     --quant-type salmon \\
     --gene-id gene_id \\
     --gene-name gene_name \\
     --output {output[0]}
 """
+when = "config.aligner == 'star_salmon' && !config.skip_alignment"
 [rules.resources]
 threads = 1
 memory = "6G"
@@ -99,23 +101,23 @@ conda = "envs/tx2gene.yaml"
 [[rules]]
 name = "tximport"
 description = "Cross-sample tximport merge of Salmon quantifications (nf-core TXIMETA_TXIMPORT, prefix salmon.merged: gene + transcript counts/tpm/lengths)"
-input = ["{config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv"]
+input = ["{config.out_dir}/{config.aligner}/salmon.merged.tx2gene.tsv"]
 expand_inputs = [
-    { pattern = "{config.out_dir}/star_salmon/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
 ]
 output = [
-    "{config.out_dir}/star_salmon/salmon.merged.gene_counts.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_tpm.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_lengths.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_scaled.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.transcript_counts.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.transcript_tpm.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.transcript_lengths.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.tx2gene_augmented.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.R_sessionInfo.log",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.transcript_counts.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.transcript_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.transcript_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.tx2gene_augmented.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.R_sessionInfo.log",
 ]
-when = "!config.skip_quantification_merge"
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && !config.skip_quantification_merge"
 shell = """
 rm -rf quants
 mkdir -p quants
@@ -137,7 +139,7 @@ mv salmon.merged.gene_counts.tsv salmon.merged.gene_tpm.tsv salmon.merged.gene_l
     salmon.merged.gene_counts_scaled.tsv salmon.merged.gene_counts_length_scaled.tsv \\
     salmon.merged.transcript_counts.tsv salmon.merged.transcript_tpm.tsv salmon.merged.transcript_lengths.tsv \\
     salmon.merged.tx2gene_augmented.tsv salmon.merged.R_sessionInfo.log \\
-    {config.out_dir}/star_salmon/
+    {config.out_dir}/{config.aligner}/
 """
 [rules.resources]
 threads = 6
@@ -158,38 +160,38 @@ conda = "envs/tximeta.yaml"
 name = "summarizedexperiment"
 description = "Gene- and transcript-level SummarizedExperiment RDS objects (nf-core SUMMARIZEDEXPERIMENT_SUMMARIZEDEXPERIMENT, prefixes salmon.merged.gene / salmon.merged.transcript)"
 input = [
-    "{config.out_dir}/star_salmon/salmon.merged.gene_counts.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_tpm.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_lengths.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_scaled.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.transcript_counts.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.transcript_tpm.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.transcript_lengths.tsv",
-    "{config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.transcript_counts.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.transcript_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.transcript_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.tx2gene.tsv",
 ]
 output = [
-    "{config.out_dir}/star_salmon/salmon.merged.gene.SummarizedExperiment.rds",
-    "{config.out_dir}/star_salmon/salmon.merged.transcript.SummarizedExperiment.rds",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene.SummarizedExperiment.rds",
+    "{config.out_dir}/{config.aligner}/salmon.merged.transcript.SummarizedExperiment.rds",
 ]
-when = "!config.skip_quantification_merge"
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && !config.skip_quantification_merge"
 shell = """
 printf "sample\\n" > samples.tsv
 printf "%s\\n" "{config.samples_list}" | tr ',' '\\n' >> samples.tsv
 Rscript scripts/summarizedexperiment.r \\
-    --matrix-files "{config.out_dir}/star_salmon/salmon.merged.gene_counts.tsv {config.out_dir}/star_salmon/salmon.merged.gene_tpm.tsv {config.out_dir}/star_salmon/salmon.merged.gene_lengths.tsv {config.out_dir}/star_salmon/salmon.merged.gene_counts_scaled.tsv {config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv" \\
+    --matrix-files "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts.tsv {config.out_dir}/{config.aligner}/salmon.merged.gene_tpm.tsv {config.out_dir}/{config.aligner}/salmon.merged.gene_lengths.tsv {config.out_dir}/{config.aligner}/salmon.merged.gene_counts_scaled.tsv {config.out_dir}/{config.aligner}/salmon.merged.gene_counts_length_scaled.tsv" \\
     --assay-names counts,counts_length_scaled,counts_scaled,lengths,tpm \\
-    --rowdata {config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv \\
+    --rowdata {config.out_dir}/{config.aligner}/salmon.merged.tx2gene.tsv \\
     --coldata samples.tsv \\
     --prefix salmon.merged.gene
 Rscript scripts/summarizedexperiment.r \\
-    --matrix-files "{config.out_dir}/star_salmon/salmon.merged.transcript_counts.tsv {config.out_dir}/star_salmon/salmon.merged.transcript_tpm.tsv {config.out_dir}/star_salmon/salmon.merged.transcript_lengths.tsv" \\
+    --matrix-files "{config.out_dir}/{config.aligner}/salmon.merged.transcript_counts.tsv {config.out_dir}/{config.aligner}/salmon.merged.transcript_tpm.tsv {config.out_dir}/{config.aligner}/salmon.merged.transcript_lengths.tsv" \\
     --assay-names counts,tpm,length \\
-    --rowdata {config.out_dir}/star_salmon/salmon.merged.tx2gene.tsv \\
+    --rowdata {config.out_dir}/{config.aligner}/salmon.merged.tx2gene.tsv \\
     --coldata samples.tsv \\
     --prefix salmon.merged.transcript
 mv salmon.merged.gene.SummarizedExperiment.rds salmon.merged.transcript.SummarizedExperiment.rds \\
-    {config.out_dir}/star_salmon/
+    {config.out_dir}/{config.aligner}/
 """
 [rules.resources]
 threads = 6
@@ -208,13 +210,13 @@ conda = "envs/summarizedexperiment.yaml"
 name = "stringtie"
 description = "StringTie reference-guided transcript assembly and quantification (nf-core STRINGTIE_STRINGTIE, -G gtf -e, --fr/--rf from strandedness)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.gtf}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/stringtie/{sample}.transcripts.gtf",
-    "{config.out_dir}/star_salmon/stringtie/{sample}.gene.abundance.txt",
-    "{config.out_dir}/star_salmon/stringtie/{sample}.coverage.gtf",
+    "{config.out_dir}/{config.aligner}/stringtie/{sample}.transcripts.gtf",
+    "{config.out_dir}/{config.aligner}/stringtie/{sample}.gene.abundance.txt",
+    "{config.out_dir}/{config.aligner}/stringtie/{sample}.coverage.gtf",
 ]
 when = "!config.skip_stringtie"
 shell = """
@@ -230,13 +232,13 @@ stringtie {input[0]} $STRAND -G {input[1]} \\
     -b {sample}.ballgown \\
     -p 6 \\
     -v -e
-mkdir -p {config.out_dir}/star_salmon/stringtie
+mkdir -p {config.out_dir}/{config.aligner}/stringtie
 # fresh-dir semantics: the previous attempt's ballgown dir makes the
 # mv fail with 'Directory not empty' on a re-run (shared workdir)
-rm -rf {config.out_dir}/star_salmon/stringtie/{sample}.ballgown
+rm -rf {config.out_dir}/{config.aligner}/stringtie/{sample}.ballgown
 mv {sample}.transcripts.gtf {sample}.gene.abundance.txt {sample}.coverage.gtf \\
-    {config.out_dir}/star_salmon/stringtie/
-mv {sample}.ballgown {config.out_dir}/star_salmon/stringtie/
+    {config.out_dir}/{config.aligner}/stringtie/
+mv {sample}.ballgown {config.out_dir}/{config.aligner}/stringtie/
 """
 [rules.resources]
 threads = 6
@@ -255,22 +257,22 @@ conda = "envs/stringtie.yaml"
 name = "deseq2_qc"
 description = "DESeq2 sample-level QC (nf-core DESEQ2_QC): PCA + sample distances + size factors on salmon.merged.gene_counts_length_scaled.tsv"
 input = [
-    "{config.out_dir}/star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/salmon.merged.gene_counts_length_scaled.tsv",
     "assets/multiqc/deseq2_pca_header.txt",
     "assets/multiqc/deseq2_clustering_header.txt",
     "scripts/deseq2_qc.r",
 ]
 output = [
-    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.dds.RData",
-    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.pca.vals.txt",
-    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.plots.pdf",
-    "{config.out_dir}/star_salmon/deseq2_qc/deseq2.sample.dists.txt",
-    "{config.out_dir}/star_salmon/deseq2_qc/size_factors/deseq2.size_factors.RData",
-    "{config.out_dir}/star_salmon/deseq2_qc/star_salmon.pca.vals_mqc.tsv",
-    "{config.out_dir}/star_salmon/deseq2_qc/star_salmon.sample.dists_mqc.tsv",
-    "{config.out_dir}/star_salmon/deseq2_qc/R_sessionInfo.log",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.dds.RData",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.pca.vals.txt",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.plots.pdf",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.sample.dists.txt",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/size_factors/deseq2.size_factors.RData",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.pca.vals_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.sample.dists_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/R_sessionInfo.log",
 ]
-when = "!config.skip_qc && !config.skip_deseq2_qc && !config.skip_quantification_merge"
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && !config.skip_qc && !config.skip_deseq2_qc && !config.skip_quantification_merge"
 shell = """
 VST_FLAG=""
 if [ "{config.deseq2_vst}" = "true" ]; then
@@ -283,20 +285,1073 @@ Rscript scripts/deseq2_qc.r \\
     --outprefix deseq2 \\
     $VST_FLAG
 if [ -f "R_sessionInfo.log" ]; then
-    sed "s/deseq2_pca/star_salmon_deseq2_pca/g" <{input[1]} > pca_header.tmp
+    sed "s/deseq2_pca/{config.aligner}_deseq2_pca/g" <{input[1]} > pca_header.tmp
     sed -i -e "s/DESeq2 PCA/STAR_SALMON DESeq2 PCA/g" pca_header.tmp
-    cat pca_header.tmp *.pca.vals.txt > star_salmon.pca.vals_mqc.tsv
+    cat pca_header.tmp *.pca.vals.txt > {config.aligner}.pca.vals_mqc.tsv
     rm pca_header.tmp
-    sed "s/deseq2_clustering/star_salmon_deseq2_clustering/g" <{input[2]} > clustering_header.tmp
+    sed "s/deseq2_clustering/{config.aligner}_deseq2_clustering/g" <{input[2]} > clustering_header.tmp
     sed -i -e "s/DESeq2 sample/STAR_SALMON DESeq2 sample/g" clustering_header.tmp
-    cat clustering_header.tmp *.sample.dists.txt > star_salmon.sample.dists_mqc.tsv
+    cat clustering_header.tmp *.sample.dists.txt > {config.aligner}.sample.dists_mqc.tsv
     rm clustering_header.tmp
 fi
-mkdir -p {config.out_dir}/star_salmon/deseq2_qc
+mkdir -p {config.out_dir}/{config.aligner}/deseq2_qc
 mv deseq2.dds.RData deseq2.pca.vals.txt deseq2.plots.pdf deseq2.sample.dists.txt \\
-    star_salmon.pca.vals_mqc.tsv star_salmon.sample.dists_mqc.tsv R_sessionInfo.log \\
-    {config.out_dir}/star_salmon/deseq2_qc/
-mv size_factors {config.out_dir}/star_salmon/deseq2_qc/
+    {config.aligner}.pca.vals_mqc.tsv {config.aligner}.sample.dists_mqc.tsv R_sessionInfo.log \\
+    {config.out_dir}/{config.aligner}/deseq2_qc/
+mv size_factors {config.out_dir}/{config.aligner}/deseq2_qc/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+# ---------------------------------------------------------------------------
+# UMI transcriptome chain (upstream subworkflows/nf-core/bam_dedup_umi):
+# coordinate-sort the STAR toTranscriptome BAM, UMI-dedup, restore name sort
+# and run umi_tools prepare-for-rsem before quantification. The intermediate
+# BAMs are unpublished Nextflow work-dir files upstream; the port gives them
+# stable canonical names (<sample>.transcriptome.sorted /
+# <sample>.umi_dedup.transcriptome.sorted / <sample>.umi_dedup.transcriptome
+# / <sample>.umi_dedup.transcriptome.filtered) since it has no work dirs.
+# The chain runs for the star_salmon/star_rsem aligners only (only they emit
+# a toTranscriptome BAM), for either umi_dedup_tool. The transcriptome-side
+# coordinate-sort index/stats are not ported (unpublished upstream unless
+# --save_umi_intermeds; nothing downstream consumes them); the dedup-side
+# stats ARE ported (published to samtools_stats unconditionally upstream).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "bam_sort_transcriptome"
+description = "Coordinate sort of the STAR toTranscriptome BAM (nf-core BAM_SORT_STATS_SAMTOOLS:SAMTOOLS_SORT, prefix <id>.transcriptome.sorted)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.sorted.bam"]
+shell = """
+samtools cat {input[0]} | samtools sort -T {sample}.transcriptome.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem')"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_view_primary_transcriptome"
+description = "Filter transcriptome BAM to primary alignments before UMI-tools dedup (nf-core SAMTOOLS_VIEW_PRIMARY, prefix <id>.primary)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.primary.bam"]
+shell = """
+samtools view --threads 1 -F 0x900 -b -o {output[0]} {input[0]}
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem') && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only"
+[rules.resources]
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_index_primary_transcriptome"
+description = "Index primary-filtered transcriptome BAM (nf-core SAMTOOLS_INDEX_PRIMARY)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.primary.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.primary.bam.bai"]
+shell = """
+samtools index -@ 2 {input[0]}
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem') && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only"
+[rules.resources]
+memory = "12G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "bam_dedup_transcriptome_umitools"
+description = "UMI-tools dedup of the transcriptome BAM (nf-core UMITOOLS_DEDUP, prefix <id>.umi_dedup.transcriptome.sorted)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.sorted.bam"]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/{sample}.umi_dedup.transcriptome.sorted.log",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
+mv {sample}.umi_dedup.transcriptome.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.transcriptome.sorted.log {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem') && config.umi_dedup_tool == 'umitools' && !config.umitools_dedup_primary_only && !config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_transcriptome_umitools_primary"
+description = "UMI-tools dedup of the primary-filtered transcriptome BAM (nf-core SAMTOOLS_VIEW_PRIMARY + UMITOOLS_DEDUP)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.primary.bam"]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/{sample}.umi_dedup.transcriptome.sorted.log",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
+mv {sample}.umi_dedup.transcriptome.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.transcriptome.sorted.log {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem') && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only && !config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_transcriptome_umitools_stats"
+description = "UMI-tools dedup of the transcriptome BAM with --output-stats TSVs (nf-core UMITOOLS_DEDUP + umitools_dedup_stats)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.sorted.bam"]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/{sample}.umi_dedup.transcriptome.sorted.log",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.transcriptome.sorted_edit_distance.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.transcriptome.sorted_per_umi.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.transcriptome.sorted_per_position.tsv",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --output-stats {sample}.umi_dedup.transcriptome.sorted --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
+mv {sample}.umi_dedup.transcriptome.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.transcriptome.sorted.log {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/
+mv {sample}.umi_dedup.transcriptome.sorted_edit_distance.tsv {sample}.umi_dedup.transcriptome.sorted_per_umi.tsv {sample}.umi_dedup.transcriptome.sorted_per_position.tsv {config.out_dir}/{config.aligner}/umitools/
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem') && config.umi_dedup_tool == 'umitools' && !config.umitools_dedup_primary_only && config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_transcriptome_umitools_primary_stats"
+description = "UMI-tools dedup of the primary-filtered transcriptome BAM with --output-stats TSVs (nf-core SAMTOOLS_VIEW_PRIMARY + UMITOOLS_DEDUP)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.primary.bam"]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/{sample}.umi_dedup.transcriptome.sorted.log",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.transcriptome.sorted_edit_distance.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.transcriptome.sorted_per_umi.tsv",
+    "{config.out_dir}/{config.aligner}/umitools/{sample}.umi_dedup.transcriptome.sorted_per_position.tsv",
+]
+shell = """
+set -euo pipefail
+#Prevent matplotlib from using /tmp
+mkdir .tmp && chmod 777 .tmp
+MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --output-stats {sample}.umi_dedup.transcriptome.sorted --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
+mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
+mv {sample}.umi_dedup.transcriptome.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.transcriptome.sorted.log {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log/
+mv {sample}.umi_dedup.transcriptome.sorted_edit_distance.tsv {sample}.umi_dedup.transcriptome.sorted_per_umi.tsv {sample}.umi_dedup.transcriptome.sorted_per_position.tsv {config.out_dir}/{config.aligner}/umitools/
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem') && config.umi_dedup_tool == 'umitools' && config.umitools_dedup_primary_only && config.umitools_dedup_stats"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+[[rules]]
+name = "bam_dedup_transcriptome_umicollapse"
+description = "UMI dedup of the transcriptome BAM with umicollapse in bam mode (nf-core UMICOLLAPSE, prefix <id>.umi_dedup.transcriptome.sorted)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.sorted.bam"]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam",
+    "{config.out_dir}/{config.aligner}/umicollapse/transcriptomic_dedup_log/{sample}.umi_dedup.transcriptome.sorted_UMICollapse.log",
+]
+shell = """
+set -euo pipefail
+# Getting the umicollapse jar file like this because `umicollapse` is a Python wrapper script generated
+# by conda that allows to set the heap size (Xmx), but not the stack size (Xss).
+# `which` allows us to get the directory that contains `umicollapse`, independent of whether we
+# are in a container or conda environment.
+UMICOLLAPSE_JAR=$(dirname $(which umicollapse))/../share/umicollapse-1.1.0-0/umicollapse.jar
+java -Xmx184320M -Xss999M -jar $UMICOLLAPSE_JAR bam -i {input[0]} -o {sample}.umi_dedup.transcriptome.sorted.bam --two-pass --paired --remove-unpaired --remove-chimeric --algo 'dir' | tee {sample}.umi_dedup.transcriptome.sorted_UMICollapse.log
+mkdir -p {config.out_dir}/{config.aligner}/umicollapse/transcriptomic_dedup_log
+mv {sample}.umi_dedup.transcriptome.sorted.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.transcriptome.sorted_UMICollapse.log {config.out_dir}/{config.aligner}/umicollapse/transcriptomic_dedup_log/
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem') && config.umi_dedup_tool == 'umicollapse'"
+[rules.resources]
+threads = 12
+memory = "200G"
+[rules.environment]
+conda = "envs/umicollapse.yaml"
+
+[[rules]]
+name = "samtools_stats_transcriptome_dedup"
+description = "samtools stats on UMI-deduped transcriptome BAM (nf-core SAMTOOLS_STATS, prefix <id>.umi_dedup.transcriptome.sorted.bam)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.transcriptome.sorted.bam.stats"]
+shell = """
+samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem')"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_flagstat_transcriptome_dedup"
+description = "samtools flagstat on UMI-deduped transcriptome BAM (nf-core SAMTOOLS_FLAGSTAT, prefix <id>.umi_dedup.transcriptome.sorted.bam)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.transcriptome.sorted.bam.flagstat"]
+shell = """
+samtools flagstat --threads 1 {input[0]} > {output[0]}
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem')"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "samtools_idxstats_transcriptome_dedup"
+description = "samtools idxstats on UMI-deduped transcriptome BAM (nf-core SAMTOOLS_IDXSTATS, prefix <id>.umi_dedup.transcriptome.sorted.bam)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.transcriptome.sorted.bam.idxstats"]
+shell = """
+samtools idxstats {input[0]} > {output[0]}
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem')"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# ---------------------------------------------------------------------------
+# Restore name sorting + umi_tools prepare-for-rsem (upstream BAM_DEDUP_UMI
+# steps 3-4). prepare-for-rsem runs for paired-end data only upstream (the
+# port assumes paired-end throughout, see README).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "samtools_sort_name_transcriptome"
+description = "Name-sort the UMI-deduped transcriptome BAM (nf-core SAMTOOLS_SORT -n, prefix <id>.umi_dedup.transcriptome)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.bam"]
+shell = """
+samtools cat {input[0]} | samtools sort -n -T {sample}.umi_dedup.transcriptome --threads 6 --reference {config.fasta} -o {output[0]} -
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem')"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "umitools_prepareforrsem"
+description = "Prepare name-sorted transcriptome BAM for quantification (nf-core UMITOOLS_PREPAREFORRSEM, prefix <id>.umi_dedup.transcriptome.filtered)"
+input = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.bam"]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.filtered.bam",
+    "{config.out_dir}/{config.aligner}/umitools/prepare_for_quantification_log/{sample}.umi_dedup.transcriptome.filtered.prepare_for_rsem.log",
+]
+shell = """
+set -euo pipefail
+umi_tools prepare-for-rsem --stdin={input[0]} --stdout={sample}.umi_dedup.transcriptome.filtered.bam --log={sample}.umi_dedup.transcriptome.filtered.prepare_for_rsem.log
+mkdir -p {config.out_dir}/{config.aligner}/umitools/prepare_for_quantification_log
+mv {sample}.umi_dedup.transcriptome.filtered.bam {config.out_dir}/{config.aligner}/
+mv {sample}.umi_dedup.transcriptome.filtered.prepare_for_rsem.log {config.out_dir}/{config.aligner}/umitools/prepare_for_quantification_log/
+"""
+when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem')"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/umitools.yaml"
+
+# ---------------------------------------------------------------------------
+# Salmon quantification in alignment mode on the UMI-prepared transcriptome
+# BAM (upstream BAM_DEDUP_UMI -> QUANTIFY_BAM_SALMON). Same outputs as
+# salmon_quant (when-gated exclusive); the with_umi variant replaces the
+# raw-transcriptome-BAM input.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "salmon_quant_umi"
+description = "Salmon quantification (alignment mode) of the UMI-deduped toTranscriptome BAM (nf-core SALMON_QUANT, with_umi path)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.filtered.bam",
+    "{config.gtf}",
+    "{config.transcript_fasta}",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}/quant.sf",
+    "{config.out_dir}/{config.aligner}/{sample}/quant.genes.sf",
+    "{config.out_dir}/{config.aligner}/{sample}/logs/salmon_quant.log",
+]
+shell = """
+case "{config.strandedness}" in
+    forward) LIBTYPE=ISF ;;
+    reverse) LIBTYPE=ISR ;;
+    *) LIBTYPE=IU ;;
+esac
+if [ -n "{config.salmon_quant_libtype}" ]; then
+    LIBTYPE="{config.salmon_quant_libtype}"
+fi
+salmon quant \\
+    --no-version-check \\
+    --geneMap {input[1]} \\
+    --threads 6 \\
+    --libType=$LIBTYPE \\
+    -t {input[2]} \\
+    -a {input[0]} \\
+    -o {config.out_dir}/{config.aligner}/{sample}
+"""
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && config.with_umi"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+# ---------------------------------------------------------------------------
+# RSEM quantification (upstream QUANTIFY_RSEM, alignment mode on the
+# toTranscriptome BAM). rsem_calculateexpression_umi consumes the UMI-
+# prepared BAM and shares the exact same outputs (when-gated exclusive).
+# The upstream process emits a transcripts.fa alongside the index builder;
+# the port does not (nothing in the RSEM chain consumes it).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "rsem_index"
+description = "Build RSEM index with STAR-compatible transcriptome references (nf-core RSEM_PREPAREREFERENCE, or symlink a user-supplied index)"
+input = [
+    "{config.fasta}",
+    "{config.gtf}",
+]
+output = ["{config.out_dir}/reference/rsem_index"]
+shell = """
+set -euo pipefail
+if [ -n "{config.rsem_index}" ]; then
+    mkdir -p {config.out_dir}/reference
+    ln -s {config.rsem_index} {config.out_dir}/reference/rsem_index
+    exit 0
+fi
+mkdir -p rsem {config.out_dir}/reference
+rsem-prepare-reference --gtf {input[1]} --num-threads 12 {input[0]} rsem/genome
+mv rsem {output[0]}
+"""
+when = "config.aligner == 'star_rsem'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/rsem.yaml"
+
+[[rules]]
+name = "rsem_calculateexpression"
+description = "RSEM quantification in alignment mode on the toTranscriptome BAM (nf-core RSEM_CALCULATEEXPRESSION, --alignments --paired-end)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+    "{config.out_dir}/reference/rsem_index",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.genes.results",
+    "{config.out_dir}/{config.aligner}/{sample}.isoforms.results",
+    "{config.out_dir}/{config.aligner}/{sample}.stat",
+    "{config.out_dir}/{config.aligner}/log/{sample}.log",
+]
+shell = """
+set -euo pipefail
+INDEX=$(find -L {input[1]} -name "*.grp" | sed 's/\\.grp$//')
+case "{config.strandedness}" in
+    forward) STRAND="--strandedness forward" ;;
+    reverse) STRAND="--strandedness reverse" ;;
+    *) STRAND= ;;
+esac
+rsem-calculate-expression \\
+    --num-threads 12 \\
+    --temporary-folder ./tmp/ \\
+    --alignments \\
+    $STRAND \\
+    --paired-end \\
+    {input[0]} \\
+    $INDEX \\
+    {sample}
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.genes.results {sample}.isoforms.results {sample}.stat {config.out_dir}/{config.aligner}/
+mv {sample}.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && !config.with_umi"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/rsem.yaml"
+
+[[rules]]
+name = "rsem_calculateexpression_umi"
+description = "RSEM quantification in alignment mode on the UMI-deduped toTranscriptome BAM (nf-core RSEM_CALCULATEEXPRESSION, with_umi path)"
+input = [
+    "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.filtered.bam",
+    "{config.out_dir}/reference/rsem_index",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.genes.results",
+    "{config.out_dir}/{config.aligner}/{sample}.isoforms.results",
+    "{config.out_dir}/{config.aligner}/{sample}.stat",
+    "{config.out_dir}/{config.aligner}/log/{sample}.log",
+]
+shell = """
+set -euo pipefail
+INDEX=$(find -L {input[1]} -name "*.grp" | sed 's/\\.grp$//')
+case "{config.strandedness}" in
+    forward) STRAND="--strandedness forward" ;;
+    reverse) STRAND="--strandedness reverse" ;;
+    *) STRAND= ;;
+esac
+rsem-calculate-expression \\
+    --num-threads 12 \\
+    --temporary-folder ./tmp/ \\
+    --alignments \\
+    $STRAND \\
+    --paired-end \\
+    {input[0]} \\
+    $INDEX \\
+    {sample}
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.genes.results {sample}.isoforms.results {sample}.stat {config.out_dir}/{config.aligner}/
+mv {sample}.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && config.with_umi"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/rsem.yaml"
+
+[[rules]]
+name = "rsem_merge_counts"
+description = "Merge RSEM gene/isoform counts across samples (nf-core CUSTOM_RSEMMERGECOUNTS, prefix all_samples, verbatim paste script)"
+input = []
+expand_inputs = [
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}.genes.results", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}.isoforms.results", variables = { sample = "config.samples_list" } },
+]
+output = [
+    "{config.out_dir}/{config.aligner}/rsem_merge_counts/all_samples.gene_counts.tsv",
+    "{config.out_dir}/{config.aligner}/rsem_merge_counts/all_samples.gene_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/rsem_merge_counts/all_samples.transcript_counts.tsv",
+    "{config.out_dir}/{config.aligner}/rsem_merge_counts/all_samples.transcript_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/rsem_merge_counts/all_samples.genes_long.tsv",
+    "{config.out_dir}/{config.aligner}/rsem_merge_counts/all_samples.isoforms_long.tsv",
+]
+shell = """
+set -euo pipefail
+mkdir -p tmp/genes tmp/isoforms
+for fileid in {input}; do
+    case "$fileid" in
+        *.genes.results) cp -L "$fileid" tmp/genes/ ;;
+        *.isoforms.results) cp -L "$fileid" tmp/isoforms/ ;;
+    esac
+done
+cut -f 1,2 `ls tmp/genes/* | head -n 1` > gene_ids.txt
+for fileid in `ls tmp/genes/*`; do
+    samplename=`basename $fileid | sed s/\\.genes\\.results$//g`
+    echo $samplename > tmp/genes/${samplename}.counts.txt
+    cut -f 5 $fileid | tail -n+2 >> tmp/genes/${samplename}.counts.txt
+    echo $samplename > tmp/genes/${samplename}.tpm.txt
+    cut -f 6 $fileid | tail -n+2 >> tmp/genes/${samplename}.tpm.txt
+done
+cut -f 1,2 `ls tmp/isoforms/* | head -n 1` > transcript_ids.txt
+for fileid in `ls tmp/isoforms/*`; do
+    samplename=`basename $fileid | sed s/\\.isoforms\\.results$//g`
+    echo $samplename > tmp/isoforms/${samplename}.counts.txt
+    cut -f 5 $fileid | tail -n+2 >> tmp/isoforms/${samplename}.counts.txt
+    echo $samplename > tmp/isoforms/${samplename}.tpm.txt
+    cut -f 6 $fileid | tail -n+2 >> tmp/isoforms/${samplename}.tpm.txt
+done
+paste gene_ids.txt tmp/genes/*.counts.txt > all_samples.gene_counts.tsv
+paste gene_ids.txt tmp/genes/*.tpm.txt > all_samples.gene_tpm.tsv
+paste transcript_ids.txt tmp/isoforms/*.counts.txt > all_samples.transcript_counts.tsv
+paste transcript_ids.txt tmp/isoforms/*.tpm.txt > all_samples.transcript_tpm.tsv
+echo -e "sample_name\\tgene_id\\ttranscript_id(s)\\tlength\\teffective_length\\texpected_count\\tTPM\\tFPKM" > all_samples.genes_long.tsv
+for fileid in `ls tmp/genes/*.genes.results`; do
+    samplename=`basename $fileid | sed s/\\.genes\\.results$//g`
+    tail -n+2 $fileid | awk -v sample=$samplename 'BEGIN{OFS="\\t"}{print sample,$1,$2,$3,$4,$5,$6,$7}' >> all_samples.genes_long.tsv
+done
+echo -e "sample_name\\ttranscript_id\\tgene_id\\tlength\\teffective_length\\texpected_count\\tTPM\\tFPKM\\tIsoPct" > all_samples.isoforms_long.tsv
+for fileid in `ls tmp/isoforms/*.isoforms.results`; do
+    samplename=`basename $fileid | sed s/\\.isoforms\\.results$//g`
+    tail -n+2 $fileid | awk -v sample=$samplename 'BEGIN{OFS="\\t"}{print sample,$1,$2,$3,$4,$5,$6,$7,$8}' >> all_samples.isoforms_long.tsv
+done
+mkdir -p {config.out_dir}/{config.aligner}/rsem_merge_counts
+mv all_samples.gene_counts.tsv all_samples.gene_tpm.tsv all_samples.transcript_counts.tsv all_samples.transcript_tpm.tsv all_samples.genes_long.tsv all_samples.isoforms_long.tsv {config.out_dir}/{config.aligner}/rsem_merge_counts/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && !config.skip_quantification_merge"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/rsem.yaml"
+
+# ---------------------------------------------------------------------------
+# RSEM tximport/SummarizedExperiment/DESeq2-QC (upstream QUANTIFY_RSEM ->
+# QUANT_TXIMPORT_SUMMARIZEDEXPERIMENT with quant_type 'rsem' and prefixes
+# rsem.merged.*; DESEQ2_QC_RSEM with --id_col 1 --sample_suffix '' --
+# count_col 3). tx2gene reads the first sample's isoforms.results.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "tx2gene_rsem"
+description = "Build transcript-to-gene mapping for RSEM (nf-core CUSTOM_TX2GENE, quant_type rsem, first sample's isoforms.results)"
+input = ["{config.gtf}"]
+output = [
+    "{config.out_dir}/{config.aligner}/rsem.merged.tx2gene.tsv",
+]
+depends_on = ["rsem_calculateexpression", "rsem_calculateexpression_umi"]
+shell = """
+FIRST_SAMPLE=$(printf "%s" "{config.samples_list}" | cut -d, -f1)
+mkdir -p qfirst
+cp -L {config.out_dir}/{config.aligner}/$FIRST_SAMPLE.isoforms.results qfirst/
+python scripts/tx2gene.py \\
+    --quant-dir qfirst \\
+    --gtf {input[0]} \\
+    --quant-type rsem \\
+    --gene-id gene_id \\
+    --gene-name gene_name \\
+    --output {output[0]}
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/tx2gene.yaml"
+
+[[rules]]
+name = "tximport_rsem"
+description = "Cross-sample tximport merge of RSEM quantifications (nf-core TXIMETA_TXIMPORT, quant_type rsem, prefix rsem.merged)"
+input = ["{config.out_dir}/{config.aligner}/rsem.merged.tx2gene.tsv"]
+expand_inputs = [
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}.isoforms.results", variables = { sample = "config.samples_list" } },
+]
+output = [
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.transcript_counts.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.transcript_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.transcript_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.tx2gene_augmented.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.R_sessionInfo.log",
+]
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && !config.skip_quantification_merge"
+shell = """
+rm -rf quants
+mkdir -p quants
+for q in {input}; do
+    case "$q" in
+        *.isoforms.results)
+            cp -L "$q" quants/
+            ;;
+    esac
+done
+Rscript scripts/tximport.r \\
+    --quants-dir quants \\
+    --tx2gene {input[0]} \\
+    --quant-type rsem \\
+    --prefix rsem.merged
+mv rsem.merged.gene_counts.tsv rsem.merged.gene_tpm.tsv rsem.merged.gene_lengths.tsv \\
+    rsem.merged.gene_counts_scaled.tsv rsem.merged.gene_counts_length_scaled.tsv \\
+    rsem.merged.transcript_counts.tsv rsem.merged.transcript_tpm.tsv rsem.merged.transcript_lengths.tsv \\
+    rsem.merged.tx2gene_augmented.tsv rsem.merged.R_sessionInfo.log \\
+    {config.out_dir}/{config.aligner}/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/tximeta.yaml"
+
+[[rules]]
+name = "summarizedexperiment_rsem"
+description = "Gene- and transcript-level SummarizedExperiment RDS objects for RSEM (nf-core SUMMARIZEDEXPERIMENT_SUMMARIZEDEXPERIMENT, prefixes rsem.merged.gene / rsem.merged.transcript)"
+input = [
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.transcript_counts.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.transcript_tpm.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.transcript_lengths.tsv",
+    "{config.out_dir}/{config.aligner}/rsem.merged.tx2gene.tsv",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene.SummarizedExperiment.rds",
+    "{config.out_dir}/{config.aligner}/rsem.merged.transcript.SummarizedExperiment.rds",
+]
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && !config.skip_quantification_merge"
+shell = """
+printf "sample\\n" > samples.tsv
+printf "%s\\n" "{config.samples_list}" | tr ',' '\\n' >> samples.tsv
+Rscript scripts/summarizedexperiment.r \\
+    --matrix-files "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts.tsv {config.out_dir}/{config.aligner}/rsem.merged.gene_tpm.tsv {config.out_dir}/{config.aligner}/rsem.merged.gene_lengths.tsv {config.out_dir}/{config.aligner}/rsem.merged.gene_counts_scaled.tsv {config.out_dir}/{config.aligner}/rsem.merged.gene_counts_length_scaled.tsv" \\
+    --assay-names counts,counts_length_scaled,counts_scaled,lengths,tpm \\
+    --rowdata {config.out_dir}/{config.aligner}/rsem.merged.tx2gene.tsv \\
+    --coldata samples.tsv \\
+    --prefix rsem.merged.gene
+Rscript scripts/summarizedexperiment.r \\
+    --matrix-files "{config.out_dir}/{config.aligner}/rsem.merged.transcript_counts.tsv {config.out_dir}/{config.aligner}/rsem.merged.transcript_tpm.tsv {config.out_dir}/{config.aligner}/rsem.merged.transcript_lengths.tsv" \\
+    --assay-names counts,tpm,length \\
+    --rowdata {config.out_dir}/{config.aligner}/rsem.merged.tx2gene.tsv \\
+    --coldata samples.tsv \\
+    --prefix rsem.merged.transcript
+mv rsem.merged.gene.SummarizedExperiment.rds rsem.merged.transcript.SummarizedExperiment.rds \\
+    {config.out_dir}/{config.aligner}/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/summarizedexperiment.yaml"
+
+[[rules]]
+name = "deseq2_qc_rsem"
+description = "DESeq2 sample-level QC on RSEM length-scaled merged counts (nf-core DESEQ2_QC_RSEM, --id_col 1 --sample_suffix '' --count_col 3)"
+input = [
+    "{config.out_dir}/{config.aligner}/rsem.merged.gene_counts_length_scaled.tsv",
+    "assets/multiqc/deseq2_pca_header.txt",
+    "assets/multiqc/deseq2_clustering_header.txt",
+    "scripts/deseq2_qc.r",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.dds.RData",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.pca.vals.txt",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.plots.pdf",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/deseq2.sample.dists.txt",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/size_factors/deseq2.size_factors.RData",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.pca.vals_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.sample.dists_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/R_sessionInfo.log",
+]
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && !config.skip_qc && !config.skip_deseq2_qc && !config.skip_quantification_merge"
+shell = """
+VST_FLAG=""
+if [ "{config.deseq2_vst}" = "true" ]; then
+    VST_FLAG="--vst TRUE"
+fi
+Rscript scripts/deseq2_qc.r \\
+    --count_file {input[0]} \\
+    --outdir ./ \\
+    --cores 6 \\
+    --outprefix deseq2 \\
+    --id_col 1 \\
+    --sample_suffix '' \\
+    --count_col 3 \\
+    $VST_FLAG
+if [ -f "R_sessionInfo.log" ]; then
+    sed "s/deseq2_pca/{config.aligner}_deseq2_pca/g" <{input[1]} > pca_header.tmp
+    sed -i -e "s/DESeq2 PCA/STAR_RSEM DESeq2 PCA/g" pca_header.tmp
+    cat pca_header.tmp *.pca.vals.txt > {config.aligner}.pca.vals_mqc.tsv
+    rm pca_header.tmp
+    sed "s/deseq2_clustering/{config.aligner}_deseq2_clustering/g" <{input[2]} > clustering_header.tmp
+    sed -i -e "s/DESeq2 sample/STAR_RSEM DESeq2 sample/g" clustering_header.tmp
+    cat clustering_header.tmp *.sample.dists.txt > {config.aligner}.sample.dists_mqc.tsv
+    rm clustering_header.tmp
+fi
+mkdir -p {config.out_dir}/{config.aligner}/deseq2_qc
+mv deseq2.dds.RData deseq2.pca.vals.txt deseq2.plots.pdf deseq2.sample.dists.txt \\
+    {config.aligner}.pca.vals_mqc.tsv {config.aligner}.sample.dists_mqc.tsv R_sessionInfo.log \\
+    {config.out_dir}/{config.aligner}/deseq2_qc/
+mv size_factors {config.out_dir}/{config.aligner}/deseq2_qc/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+# ---------------------------------------------------------------------------
+# Pseudo-alignment with Salmon (upstream QUANTIFY_PSEUDO_ALIGNMENT). Runs in
+# ADDITION to the alignment-mode bam chain; per-sample outputs land in
+# {config.pseudo_aligner}/ and merged outputs carry the {pseudo_aligner}.merged
+# prefix, so the two chains never collide. Reads are the same four
+# FASTQ_QC final-read variants the aligners consume (no skip_alignment gate:
+# upstream pseudo runs independent of the aligner).
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "salmon_index"
+description = "Build Salmon index with decoys from the genome FASTA (nf-core SALMON_INDEX, or symlink a user-supplied index)"
+input = [
+    "{config.transcript_fasta}",
+    "{config.fasta}",
+]
+output = ["{config.out_dir}/reference/salmon_index"]
+shell = """
+set -euo pipefail
+if [ -n "{config.salmon_index}" ]; then
+    mkdir -p {config.out_dir}/reference
+    ln -s {config.salmon_index} {config.out_dir}/reference/salmon_index
+    exit 0
+fi
+mkdir -p {config.out_dir}/reference
+grep '^>' {input[1]} | cut -d ' ' -f 1 | cut -d $'\\t' -f 1 | sed 's/>//g' > decoys.txt
+cat {input[0]} {input[1]} > gentrome.fa
+salmon index \\
+    --threads 6 \\
+    -t gentrome.fa \\
+    -d decoys.txt \\
+    -i salmon
+mv salmon {output[0]}
+"""
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+[[rules]]
+name = "salmon_quant_pseudo"
+description = "Salmon pseudo-alignment of trimmed reads (nf-core SALMON_QUANT, pseudo mode, index + decoys)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/reference/salmon_index",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.genes.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
+]
+shell = """
+case "{config.strandedness}" in
+    forward) LIBTYPE=ISF ;;
+    reverse) LIBTYPE=ISR ;;
+    *) LIBTYPE=IU ;;
+esac
+if [ -n "{config.salmon_quant_libtype}" ]; then
+    LIBTYPE="{config.salmon_quant_libtype}"
+fi
+salmon quant \\
+    --no-version-check \\
+    --geneMap {input[3]} \\
+    --threads 6 \\
+    --libType=$LIBTYPE \\
+    --index {input[2]} \\
+    -1 {input[0]} -2 {input[1]} \\
+    -o {config.out_dir}/{config.pseudo_aligner}/{sample}
+"""
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+[[rules]]
+name = "salmon_quant_pseudo_bbsplit"
+description = "Salmon pseudo-alignment of BBSplit-filtered reads (nf-core SALMON_QUANT, pseudo mode)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.out_dir}/reference/salmon_index",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.genes.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
+]
+shell = """
+case "{config.strandedness}" in
+    forward) LIBTYPE=ISF ;;
+    reverse) LIBTYPE=ISR ;;
+    *) LIBTYPE=IU ;;
+esac
+if [ -n "{config.salmon_quant_libtype}" ]; then
+    LIBTYPE="{config.salmon_quant_libtype}"
+fi
+salmon quant \\
+    --no-version-check \\
+    --geneMap {input[3]} \\
+    --threads 6 \\
+    --libType=$LIBTYPE \\
+    --index {input[2]} \\
+    -1 {input[0]} -2 {input[1]} \\
+    -o {config.out_dir}/{config.pseudo_aligner}/{sample}
+"""
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && !config.skip_bbsplit && !config.remove_ribo_rna"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+[[rules]]
+name = "salmon_quant_pseudo_sortmerna"
+description = "Salmon pseudo-alignment of sortmerna-filtered reads (nf-core SALMON_QUANT, pseudo mode)"
+input = [
+    "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/reference/salmon_index",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.genes.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
+]
+shell = """
+case "{config.strandedness}" in
+    forward) LIBTYPE=ISF ;;
+    reverse) LIBTYPE=ISR ;;
+    *) LIBTYPE=IU ;;
+esac
+if [ -n "{config.salmon_quant_libtype}" ]; then
+    LIBTYPE="{config.salmon_quant_libtype}"
+fi
+salmon quant \\
+    --no-version-check \\
+    --geneMap {input[3]} \\
+    --threads 6 \\
+    --libType=$LIBTYPE \\
+    --index {input[2]} \\
+    -1 {input[0]} -2 {input[1]} \\
+    -o {config.out_dir}/{config.pseudo_aligner}/{sample}
+"""
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+[[rules]]
+name = "salmon_quant_pseudo_bowtie2"
+description = "Salmon pseudo-alignment of bowtie2-rRNA-filtered reads (nf-core SALMON_QUANT, pseudo mode)"
+input = [
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
+    "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
+    "{config.out_dir}/reference/salmon_index",
+    "{config.gtf}",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.genes.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
+]
+shell = """
+case "{config.strandedness}" in
+    forward) LIBTYPE=ISF ;;
+    reverse) LIBTYPE=ISR ;;
+    *) LIBTYPE=IU ;;
+esac
+if [ -n "{config.salmon_quant_libtype}" ]; then
+    LIBTYPE="{config.salmon_quant_libtype}"
+fi
+salmon quant \\
+    --no-version-check \\
+    --geneMap {input[3]} \\
+    --threads 6 \\
+    --libType=$LIBTYPE \\
+    --index {input[2]} \\
+    -1 {input[0]} -2 {input[1]} \\
+    -o {config.out_dir}/{config.pseudo_aligner}/{sample}
+"""
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+[[rules]]
+name = "tx2gene_pseudo"
+description = "Build transcript-to-gene mapping for pseudo-alignment (nf-core CUSTOM_TX2GENE, prefix <pseudo_aligner>.merged)"
+input = ["{config.gtf}"]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene.tsv",
+]
+depends_on = ["salmon_quant_pseudo", "salmon_quant_pseudo_bbsplit", "salmon_quant_pseudo_sortmerna", "salmon_quant_pseudo_bowtie2"]
+shell = """
+FIRST_SAMPLE=$(printf "%s" "{config.samples_list}" | cut -d, -f1)
+python scripts/tx2gene.py \\
+    --quant-dir {config.out_dir}/{config.pseudo_aligner}/$FIRST_SAMPLE \\
+    --gtf {input[0]} \\
+    --quant-type salmon \\
+    --gene-id gene_id \\
+    --gene-name gene_name \\
+    --output {output[0]}
+"""
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/tx2gene.yaml"
+
+[[rules]]
+name = "tximport_pseudo"
+description = "Cross-sample tximport merge of pseudo-alignment quantifications (nf-core TXIMETA_TXIMPORT, prefix <pseudo_aligner>.merged)"
+input = ["{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene.tsv"]
+expand_inputs = [
+    { pattern = "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_tpm.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_lengths.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_counts.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_tpm.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_lengths.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene_augmented.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.R_sessionInfo.log",
+]
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && !config.skip_quantification_merge"
+shell = """
+rm -rf quants
+mkdir -p quants
+for q in {input}; do
+    case "$q" in
+        */quant.sf)
+            d="quants/$(basename "$(dirname "$q")")"
+            mkdir -p "$d"
+            cp -L "$q" "$d/"
+            ;;
+    esac
+done
+Rscript scripts/tximport.r \\
+    --quants-dir quants \\
+    --tx2gene {input[0]} \\
+    --quant-type salmon \\
+    --prefix {config.pseudo_aligner}.merged
+mv {config.pseudo_aligner}.merged.gene_counts.tsv {config.pseudo_aligner}.merged.gene_tpm.tsv {config.pseudo_aligner}.merged.gene_lengths.tsv \\
+    {config.pseudo_aligner}.merged.gene_counts_scaled.tsv {config.pseudo_aligner}.merged.gene_counts_length_scaled.tsv \\
+    {config.pseudo_aligner}.merged.transcript_counts.tsv {config.pseudo_aligner}.merged.transcript_tpm.tsv {config.pseudo_aligner}.merged.transcript_lengths.tsv \\
+    {config.pseudo_aligner}.merged.tx2gene_augmented.tsv {config.pseudo_aligner}.merged.R_sessionInfo.log \\
+    {config.out_dir}/{config.pseudo_aligner}/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/tximeta.yaml"
+
+[[rules]]
+name = "summarizedexperiment_pseudo"
+description = "Gene- and transcript-level SummarizedExperiment RDS objects for pseudo-alignment (nf-core SUMMARIZEDEXPERIMENT_SUMMARIZEDEXPERIMENT, prefixes <pseudo_aligner>.merged.gene / .transcript)"
+input = [
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_tpm.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_lengths.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts_scaled.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts_length_scaled.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_counts.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_tpm.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_lengths.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene.tsv",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene.SummarizedExperiment.rds",
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript.SummarizedExperiment.rds",
+]
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && !config.skip_quantification_merge"
+shell = """
+printf "sample\\n" > samples.tsv
+printf "%s\\n" "{config.samples_list}" | tr ',' '\\n' >> samples.tsv
+Rscript scripts/summarizedexperiment.r \\
+    --matrix-files "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts.tsv {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_tpm.tsv {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_lengths.tsv {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts_scaled.tsv {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts_length_scaled.tsv" \\
+    --assay-names counts,counts_length_scaled,counts_scaled,lengths,tpm \\
+    --rowdata {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene.tsv \\
+    --coldata samples.tsv \\
+    --prefix {config.pseudo_aligner}.merged.gene
+Rscript scripts/summarizedexperiment.r \\
+    --matrix-files "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_counts.tsv {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_tpm.tsv {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.transcript_lengths.tsv" \\
+    --assay-names counts,tpm,length \\
+    --rowdata {config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene.tsv \\
+    --coldata samples.tsv \\
+    --prefix {config.pseudo_aligner}.merged.transcript
+mv {config.pseudo_aligner}.merged.gene.SummarizedExperiment.rds {config.pseudo_aligner}.merged.transcript.SummarizedExperiment.rds \\
+    {config.out_dir}/{config.pseudo_aligner}/
+"""
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/summarizedexperiment.yaml"
+
+[[rules]]
+name = "deseq2_qc_pseudo"
+description = "DESeq2 sample-level QC on pseudo-alignment length-scaled merged counts (nf-core DESEQ2_QC_PSEUDO)"
+input = [
+    "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.gene_counts_length_scaled.tsv",
+    "assets/multiqc/deseq2_pca_header.txt",
+    "assets/multiqc/deseq2_clustering_header.txt",
+    "scripts/deseq2_qc.r",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/deseq2.dds.RData",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/deseq2.pca.vals.txt",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/deseq2.plots.pdf",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/deseq2.sample.dists.txt",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/size_factors/deseq2.size_factors.RData",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.pca.vals_mqc.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.sample.dists_mqc.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/R_sessionInfo.log",
+]
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && !config.skip_qc && !config.skip_deseq2_qc && !config.skip_quantification_merge"
+shell = """
+VST_FLAG=""
+if [ "{config.deseq2_vst}" = "true" ]; then
+    VST_FLAG="--vst TRUE"
+fi
+Rscript scripts/deseq2_qc.r \\
+    --count_file {input[0]} \\
+    --outdir ./ \\
+    --cores 6 \\
+    --outprefix deseq2 \\
+    --id_col 1 \\
+    --sample_suffix '' \\
+    --count_col 3 \\
+    $VST_FLAG
+if [ -f "R_sessionInfo.log" ]; then
+    sed "s/deseq2_pca/{config.pseudo_aligner}_deseq2_pca/g" <{input[1]} > pca_header.tmp
+    sed -i -e "s/DESeq2 PCA/SALMON DESeq2 PCA/g" pca_header.tmp
+    cat pca_header.tmp *.pca.vals.txt > {config.pseudo_aligner}.pca.vals_mqc.tsv
+    rm pca_header.tmp
+    sed "s/deseq2_clustering/{config.pseudo_aligner}_deseq2_clustering/g" <{input[2]} > clustering_header.tmp
+    sed -i -e "s/DESeq2 sample/SALMON DESeq2 sample/g" clustering_header.tmp
+    cat clustering_header.tmp *.sample.dists.txt > {config.pseudo_aligner}.sample.dists_mqc.tsv
+    rm clustering_header.tmp
+fi
+mkdir -p {config.out_dir}/{config.pseudo_aligner}/deseq2_qc
+mv deseq2.dds.RData deseq2.pca.vals.txt deseq2.plots.pdf deseq2.sample.dists.txt \\
+    {config.pseudo_aligner}.pca.vals_mqc.tsv {config.pseudo_aligner}.sample.dists_mqc.tsv R_sessionInfo.log \\
+    {config.out_dir}/{config.pseudo_aligner}/deseq2_qc/
+mv size_factors {config.out_dir}/{config.pseudo_aligner}/deseq2_qc/
 """
 [rules.resources]
 threads = 6

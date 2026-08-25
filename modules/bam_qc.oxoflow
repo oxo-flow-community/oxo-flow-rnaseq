@@ -29,12 +29,12 @@ description = "Post-alignment QC: featureCounts gene counts, biotype MultiQC tab
 name = "featurecounts"
 description = "Gene counts with featureCounts (nf-core SUBREAD_FEATURECOUNTS, -B -C, strandedness from config)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.gtf}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/featurecounts/{sample}.featureCounts.tsv",
-    "{config.out_dir}/star_salmon/featurecounts/{sample}.featureCounts.tsv.summary",
+    "{config.out_dir}/{config.aligner}/featurecounts/{sample}.featureCounts.tsv",
+    "{config.out_dir}/{config.aligner}/featurecounts/{sample}.featureCounts.tsv.summary",
 ]
 shell = """
 case "{config.strandedness}" in
@@ -57,15 +57,15 @@ conda = "envs/subread.yaml"
 name = "biotype_multiqc"
 description = "Biotype counts for MultiQC (nf-core CUSTOM_MULTIQCCUSTOMBIOTYPE)"
 input = [
-    "{config.out_dir}/star_salmon/featurecounts/{sample}.featureCounts.tsv",
+    "{config.out_dir}/{config.aligner}/featurecounts/{sample}.featureCounts.tsv",
     "assets/multiqc/biotypes_header.txt",
 ]
 output = [
-    "{config.out_dir}/star_salmon/featurecounts/{sample}.biotype_counts_mqc.tsv",
-    "{config.out_dir}/star_salmon/featurecounts/{sample}.biotype_counts_rrna_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/featurecounts/{sample}.biotype_counts_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/featurecounts/{sample}.biotype_counts_rrna_mqc.tsv",
 ]
 shell = """
-python scripts/mqc_features_stat.py {input[0]} {input[1]} {sample} {config.out_dir}/star_salmon/featurecounts
+python scripts/mqc_features_stat.py {input[0]} {input[1]} {sample} {config.out_dir}/{config.aligner}/featurecounts
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -79,10 +79,10 @@ conda = "envs/biotype.yaml"
 name = "rseqc_bam_stat"
 description = "BAM statistics with RSeQC (nf-core RSEQC_BAMSTAT)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
 ]
-output = ["{config.out_dir}/star_salmon/rseqc/bam_stat/{sample}.bam_stat.txt"]
+output = ["{config.out_dir}/{config.aligner}/rseqc/bam_stat/{sample}.bam_stat.txt"]
 shell = """
 bam_stat.py -i {input[0]} > {output[0]}
 """
@@ -98,11 +98,11 @@ conda = "envs/rseqc.yaml"
 name = "rseqc_infer_experiment"
 description = "Infer library strandedness with RSeQC (nf-core RSEQC_INFEREXPERIMENT)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
     "{config.gene_bed}",
 ]
-output = ["{config.out_dir}/star_salmon/rseqc/infer_experiment/{sample}.infer_experiment.txt"]
+output = ["{config.out_dir}/{config.aligner}/rseqc/infer_experiment/{sample}.infer_experiment.txt"]
 shell = """
 infer_experiment.py -i {input[0]} -r {input[2]} > {output[0]}
 """
@@ -120,24 +120,24 @@ conda = "envs/rseqc.yaml"
 name = "rseqc_inner_distance"
 description = "Insert-size distribution with RSeQC (nf-core RSEQC_INNERDISTANCE)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
     "{config.gene_bed}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance.txt",
-    "{config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance_freq.txt",
-    "{config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance_mean.txt",
-    "{config.out_dir}/star_salmon/rseqc/inner_distance/pdf/{sample}.inner_distance_plot.pdf",
-    "{config.out_dir}/star_salmon/rseqc/inner_distance/rscript/{sample}.inner_distance_plot.r",
+    "{config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/{sample}.inner_distance.txt",
+    "{config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/{sample}.inner_distance_freq.txt",
+    "{config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/{sample}.inner_distance_mean.txt",
+    "{config.out_dir}/{config.aligner}/rseqc/inner_distance/pdf/{sample}.inner_distance_plot.pdf",
+    "{config.out_dir}/{config.aligner}/rseqc/inner_distance/rscript/{sample}.inner_distance_plot.r",
 ]
 shell = """
-inner_distance.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/inner_distance/{sample} > stdout.txt
-head -n 2 stdout.txt > {config.out_dir}/star_salmon/rseqc/inner_distance/txt/{sample}.inner_distance_mean.txt
+inner_distance.py -i {input[0]} -r {input[2]} -o {config.out_dir}/{config.aligner}/rseqc/inner_distance/{sample} > stdout.txt
+head -n 2 stdout.txt > {config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/{sample}.inner_distance_mean.txt
 rm -f stdout.txt
-mv {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance.txt {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance_freq.txt {config.out_dir}/star_salmon/rseqc/inner_distance/txt/
-mv {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance_plot.r {config.out_dir}/star_salmon/rseqc/inner_distance/rscript/
-mv {config.out_dir}/star_salmon/rseqc/inner_distance/{sample}.inner_distance_plot.pdf {config.out_dir}/star_salmon/rseqc/inner_distance/pdf/
+mv {config.out_dir}/{config.aligner}/rseqc/inner_distance/{sample}.inner_distance.txt {config.out_dir}/{config.aligner}/rseqc/inner_distance/{sample}.inner_distance_freq.txt {config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/
+mv {config.out_dir}/{config.aligner}/rseqc/inner_distance/{sample}.inner_distance_plot.r {config.out_dir}/{config.aligner}/rseqc/inner_distance/rscript/
+mv {config.out_dir}/{config.aligner}/rseqc/inner_distance/{sample}.inner_distance_plot.pdf {config.out_dir}/{config.aligner}/rseqc/inner_distance/pdf/
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -156,29 +156,29 @@ conda = "envs/rseqc.yaml"
 name = "rseqc_junction_annotation"
 description = "Annotate splicing junctions with RSeQC (nf-core RSEQC_JUNCTIONANNOTATION)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
     "{config.gene_bed}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/rseqc/junction_annotation/bed/{sample}.junction.bed",
-    "{config.out_dir}/star_salmon/rseqc/junction_annotation/log/{sample}.junction_annotation.log",
-    "{config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf",
-    "{config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf",
-    "{config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/{sample}.junction_plot.r",
-    "{config.out_dir}/star_salmon/rseqc/junction_annotation/xls/{sample}.junction.xls",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/bed/{sample}.junction.bed",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/log/{sample}.junction_annotation.log",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/rscript/{sample}.junction_plot.r",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/xls/{sample}.junction.xls",
 ]
 shell = """
-junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/star_salmon/rseqc/junction_annotation/log/{sample}.junction_annotation.log >&2)
-mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.xls {config.out_dir}/star_salmon/rseqc/junction_annotation/xls/
-mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction.bed {config.out_dir}/star_salmon/rseqc/junction_annotation/bed/
-mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.junction_plot.r {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/
+junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/{config.aligner}/rseqc/junction_annotation/log/{sample}.junction_annotation.log >&2)
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.junction.xls {config.out_dir}/{config.aligner}/rseqc/junction_annotation/xls/
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.junction.bed {config.out_dir}/{config.aligner}/rseqc/junction_annotation/bed/
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.junction_plot.r {config.out_dir}/{config.aligner}/rseqc/junction_annotation/rscript/
 # the emitted R script embeds the full -o prefix in its pdf() paths, so
 # it must run from the workflow ROOT (live: running it from the output
 # subdir double-prefixed the path — 'cannot open file')
-Rscript {config.out_dir}/star_salmon/rseqc/junction_annotation/rscript/{sample}.junction_plot.r
-mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.splice_events.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
-mv {config.out_dir}/star_salmon/rseqc/junction_annotation/{sample}.splice_junction.pdf {config.out_dir}/star_salmon/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
+Rscript {config.out_dir}/{config.aligner}/rseqc/junction_annotation/rscript/{sample}.junction_plot.r
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.splice_events.pdf {config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.splice_junction.pdf {config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -193,24 +193,24 @@ conda = "envs/rseqc.yaml"
 name = "rseqc_junction_saturation"
 description = "Junction saturation with RSeQC (nf-core RSEQC_JUNCTIONSATURATION)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
     "{config.gene_bed}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf",
-    "{config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r",
 ]
 shell = """
-junction_saturation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}
-mv {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}.junctionSaturation_plot.r {config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/
+junction_saturation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/{config.aligner}/rseqc/junction_saturation/{sample}
+mv {config.out_dir}/{config.aligner}/rseqc/junction_saturation/{sample}.junctionSaturation_plot.r {config.out_dir}/{config.aligner}/rseqc/junction_saturation/rscript/
 # the python only emits the plotting script — the pdf is produced by
 # running it. The .r embeds the full -o prefix in its pdf() path, so it
 # must run from the workflow ROOT (live: running from the output subdir
 # double-prefixed the path — 'cannot open file').
-Rscript {config.out_dir}/star_salmon/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r
+Rscript {config.out_dir}/{config.aligner}/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r
 # the R script writes <prefix>.junctionSaturation_plot.pdf (not junction_saturation.pdf)
-mv {config.out_dir}/star_salmon/rseqc/junction_saturation/{sample}.junctionSaturation_plot.pdf {config.out_dir}/star_salmon/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf
+mv {config.out_dir}/{config.aligner}/rseqc/junction_saturation/{sample}.junctionSaturation_plot.pdf {config.out_dir}/{config.aligner}/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -224,11 +224,11 @@ conda = "envs/rseqc.yaml"
 name = "rseqc_read_distribution"
 description = "Read distribution across gene features with RSeQC (nf-core RSEQC_READDISTRIBUTION)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
     "{config.gene_bed}",
 ]
-output = ["{config.out_dir}/star_salmon/rseqc/read_distribution/{sample}.read_distribution.txt"]
+output = ["{config.out_dir}/{config.aligner}/rseqc/read_distribution/{sample}.read_distribution.txt"]
 shell = """
 read_distribution.py -i {input[0]} -r {input[2]} > {output[0]}
 """
@@ -246,20 +246,20 @@ conda = "envs/rseqc.yaml"
 name = "rseqc_read_duplication"
 description = "Read duplication rate with RSeQC (nf-core RSEQC_READDUPLICATION)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam.bai",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
 ]
 output = [
-    "{config.out_dir}/star_salmon/rseqc/read_duplication/pdf/{sample}.DupRate_plot.pdf",
-    "{config.out_dir}/star_salmon/rseqc/read_duplication/rscript/{sample}.DupRate_plot.r",
-    "{config.out_dir}/star_salmon/rseqc/read_duplication/xls/{sample}.pos.DupRate.xls",
-    "{config.out_dir}/star_salmon/rseqc/read_duplication/xls/{sample}.seq.DupRate.xls",
+    "{config.out_dir}/{config.aligner}/rseqc/read_duplication/pdf/{sample}.DupRate_plot.pdf",
+    "{config.out_dir}/{config.aligner}/rseqc/read_duplication/rscript/{sample}.DupRate_plot.r",
+    "{config.out_dir}/{config.aligner}/rseqc/read_duplication/xls/{sample}.pos.DupRate.xls",
+    "{config.out_dir}/{config.aligner}/rseqc/read_duplication/xls/{sample}.seq.DupRate.xls",
 ]
 shell = """
-read_duplication.py -i {input[0]} -o {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}
-mv {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.seq.DupRate.xls {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.pos.DupRate.xls {config.out_dir}/star_salmon/rseqc/read_duplication/xls/
-mv {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.DupRate_plot.r {config.out_dir}/star_salmon/rseqc/read_duplication/rscript/
-mv {config.out_dir}/star_salmon/rseqc/read_duplication/{sample}.DupRate_plot.pdf {config.out_dir}/star_salmon/rseqc/read_duplication/pdf/
+read_duplication.py -i {input[0]} -o {config.out_dir}/{config.aligner}/rseqc/read_duplication/{sample}
+mv {config.out_dir}/{config.aligner}/rseqc/read_duplication/{sample}.seq.DupRate.xls {config.out_dir}/{config.aligner}/rseqc/read_duplication/{sample}.pos.DupRate.xls {config.out_dir}/{config.aligner}/rseqc/read_duplication/xls/
+mv {config.out_dir}/{config.aligner}/rseqc/read_duplication/{sample}.DupRate_plot.r {config.out_dir}/{config.aligner}/rseqc/read_duplication/rscript/
+mv {config.out_dir}/{config.aligner}/rseqc/read_duplication/{sample}.DupRate_plot.pdf {config.out_dir}/{config.aligner}/rseqc/read_duplication/pdf/
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -277,18 +277,18 @@ conda = "envs/rseqc.yaml"
 name = "dupradar"
 description = "Duplicate rate analysis with dupRadar (nf-core DUPRADAR)"
 input = [
-    "{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.gtf}",
 ]
 output = [
-    "{config.out_dir}/star_salmon/dupradar/box_plot/{sample}_duprateExpBoxplot.pdf",
-    "{config.out_dir}/star_salmon/dupradar/gene_data/{sample}_dupMatrix.txt",
-    "{config.out_dir}/star_salmon/dupradar/histogram/{sample}_expressionHist.pdf",
-    "{config.out_dir}/star_salmon/dupradar/intercepts_slope/{sample}_intercept_slope.txt",
-    "{config.out_dir}/star_salmon/dupradar/multiqc/{sample}_dup_intercept_mqc.txt",
-    "{config.out_dir}/star_salmon/dupradar/multiqc/{sample}_duprateExpDensCurve_mqc.txt",
-    "{config.out_dir}/star_salmon/dupradar/scatter_plot/{sample}_duprateExpDens.pdf",
-    "{config.out_dir}/star_salmon/dupradar/{sample}.R_sessionInfo.log",
+    "{config.out_dir}/{config.aligner}/dupradar/box_plot/{sample}_duprateExpBoxplot.pdf",
+    "{config.out_dir}/{config.aligner}/dupradar/gene_data/{sample}_dupMatrix.txt",
+    "{config.out_dir}/{config.aligner}/dupradar/histogram/{sample}_expressionHist.pdf",
+    "{config.out_dir}/{config.aligner}/dupradar/intercepts_slope/{sample}_intercept_slope.txt",
+    "{config.out_dir}/{config.aligner}/dupradar/multiqc/{sample}_dup_intercept_mqc.txt",
+    "{config.out_dir}/{config.aligner}/dupradar/multiqc/{sample}_duprateExpDensCurve_mqc.txt",
+    "{config.out_dir}/{config.aligner}/dupradar/scatter_plot/{sample}_duprateExpDens.pdf",
+    "{config.out_dir}/{config.aligner}/dupradar/{sample}.R_sessionInfo.log",
 ]
 shell = """
 export BAM={input[0]}
@@ -302,13 +302,13 @@ case "{config.strandedness}" in
 esac
 export PAIRED=true
 Rscript scripts/dupradar.r
-mv {sample}_dupMatrix.txt {config.out_dir}/star_salmon/dupradar/gene_data/
-mv {sample}_duprateExpDens.pdf {config.out_dir}/star_salmon/dupradar/scatter_plot/
-mv {sample}_duprateExpBoxplot.pdf {config.out_dir}/star_salmon/dupradar/box_plot/
-mv {sample}_expressionHist.pdf {config.out_dir}/star_salmon/dupradar/histogram/
-mv {sample}_intercept_slope.txt {config.out_dir}/star_salmon/dupradar/intercepts_slope/
-mv {sample}_dup_intercept_mqc.txt {sample}_duprateExpDensCurve_mqc.txt {config.out_dir}/star_salmon/dupradar/multiqc/
-mv {sample}.R_sessionInfo.log {config.out_dir}/star_salmon/dupradar/
+mv {sample}_dupMatrix.txt {config.out_dir}/{config.aligner}/dupradar/gene_data/
+mv {sample}_duprateExpDens.pdf {config.out_dir}/{config.aligner}/dupradar/scatter_plot/
+mv {sample}_duprateExpBoxplot.pdf {config.out_dir}/{config.aligner}/dupradar/box_plot/
+mv {sample}_expressionHist.pdf {config.out_dir}/{config.aligner}/dupradar/histogram/
+mv {sample}_intercept_slope.txt {config.out_dir}/{config.aligner}/dupradar/intercepts_slope/
+mv {sample}_dup_intercept_mqc.txt {sample}_duprateExpDensCurve_mqc.txt {config.out_dir}/{config.aligner}/dupradar/multiqc/
+mv {sample}.R_sessionInfo.log {config.out_dir}/{config.aligner}/dupradar/
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -322,8 +322,8 @@ conda = "envs/dupradar.yaml"
 [[rules]]
 name = "samtools_sort_qualimap"
 description = "Name-sort markdup BAM for Qualimap (nf-core SAMTOOLS_SORT_QUALIMAP, prefix <id>.namesorted)"
-input = ["{config.out_dir}/star_salmon/{sample}.markdup.sorted.bam"]
-output = ["{config.out_dir}/star_salmon/qualimap/{sample}.namesorted.bam"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam"]
+output = ["{config.out_dir}/{config.aligner}/qualimap/{sample}.namesorted.bam"]
 shell = """
 samtools cat {input[0]} | samtools sort -n -T {sample}.namesorted --threads 6 --reference {config.fasta} -o {output[0]} -
 """
@@ -343,10 +343,10 @@ conda = "envs/samtools.yaml"
 name = "qualimap_rnaseq"
 description = "Qualimap RNA-seq QC (nf-core QUALIMAP_RNASEQ, --sorted, -Xmx29491M)"
 input = [
-    "{config.out_dir}/star_salmon/qualimap/{sample}.namesorted.bam",
+    "{config.out_dir}/{config.aligner}/qualimap/{sample}.namesorted.bam",
     "{config.gtf}",
 ]
-output = ["{config.out_dir}/star_salmon/qualimap/{sample}/rnaseq_qc_results.txt"]
+output = ["{config.out_dir}/{config.aligner}/qualimap/{sample}/rnaseq_qc_results.txt"]
 shell = """
 unset DISPLAY
 mkdir -p tmp
@@ -356,8 +356,8 @@ case "{config.strandedness}" in
     reverse) P=strand-specific-reverse;;
     *) P=non-strand-specific;;
 esac
-rm -rf {config.out_dir}/star_salmon/qualimap/{sample}
-qualimap --java-mem-size=29491M rnaseq --sorted -bam {input[0]} -gtf {input[1]} -p $P -pe -outdir {config.out_dir}/star_salmon/qualimap/{sample}
+rm -rf {config.out_dir}/{config.aligner}/qualimap/{sample}
+qualimap --java-mem-size=29491M rnaseq --sorted -bam {input[0]} -gtf {input[1]} -p $P -pe -outdir {config.out_dir}/{config.aligner}/qualimap/{sample}
 """
 when = "!config.skip_qc"
 [rules.resources]

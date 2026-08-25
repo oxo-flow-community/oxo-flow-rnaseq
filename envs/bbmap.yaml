@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 BBMAP_BBSPLIT module
+# environment (modules/nf-core/bbmap/bbsplit/environment.yml).
+name: bbmap
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::bbmap=39.18

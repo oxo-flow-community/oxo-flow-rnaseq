@@ -1,0 +1,10 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 UMITOOLS_DEDUP module
+# environment (modules/nf-core/umitools/dedup/environment.yml); the extract
+# and prepare-for-rsem modules pin the same umi_tools/pysam versions.
+name: umitools
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::umi_tools=1.1.6
+  - bioconda::pysam=0.22.0

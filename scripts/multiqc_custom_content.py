@@ -156,6 +156,7 @@ def multiqc_sample_merge_yaml_pattern(sample_id, read):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--aligner", default="star_salmon", help="aligner subdir under out_dir (upstream: params.aligner)")
     parser.add_argument("--samples", required=True, help="comma-joined sample ids")
     parser.add_argument("--reads-dir", required=True)
     parser.add_argument("--strandedness", required=True, choices=["forward", "reverse", "unstranded"])
@@ -197,7 +198,7 @@ def main():
     # row per failing sample (upstream: skip=status_header_lines on merge).
     mapped_rows = []
     for sid in samples:
-        log = os.path.join(os.path.dirname(args.out_dir), "star_salmon", "log", f"{sid}.Log.final.out")
+        log = os.path.join(os.path.dirname(args.out_dir), args.aligner, "log", f"{sid}.Log.final.out")
         if not os.path.exists(log):
             continue
         percent = None
@@ -226,7 +227,7 @@ def main():
     rows = []
     for sid in samples:
         infer_file = os.path.join(
-            os.path.dirname(args.out_dir), "star_salmon", "rseqc", "infer_experiment", f"{sid}.infer_experiment.txt"
+            os.path.dirname(args.out_dir), args.aligner, "rseqc", "infer_experiment", f"{sid}.infer_experiment.txt"
         )
         if not os.path.exists(infer_file):
             continue
@@ -323,6 +324,15 @@ def main():
         "SAMTOOLS_FLAGSTAT": {"samtools": "1.23.1", "htslib": "1.23.1"},
         "SAMTOOLS_IDXSTATS": {"samtools": "1.23.1", "htslib": "1.23.1"},
         "PICARD_MARKDUPLICATES": {"picard": "3.4.0"},
+        "HISAT2_ALIGN": {"hisat2": "2.2.1", "samtools": "1.20"},
+        "BBMAP_BBSPLIT": {"bbmap": "39.18"},
+        "SORTMERNA": {"sortmerna": "4.3.7"},
+        "BOWTIE2_ALIGN": {"bowtie2": "2.5.4", "htslib": "1.21", "samtools": "1.21"},
+        "RSEM_CALCULATEEXPRESSION": {"rsem": "1.3.3"},
+        "UMITOOLS_EXTRACT": {"umi_tools": "1.1.6", "pysam": "0.22.0"},
+        "UMITOOLS_DEDUP": {"umi_tools": "1.1.6", "pysam": "0.22.0"},
+        "UMITOOLS_PREPAREFORRSEM": {"umi_tools": "1.1.6", "pysam": "0.22.0"},
+        "UMICOLLAPSE": {"umicollapse": "1.1.0"},
         "SUBREAD_FEATURECOUNTS": {"subread": "2.0.6"},
         "CUSTOM_MULTIQCCUSTOMBIOTYPE": {"python": "3.12.12"},
         "RSEQC_BAMSTAT": {"rseqc": "5.0.4", "r-base": "4.3"},
