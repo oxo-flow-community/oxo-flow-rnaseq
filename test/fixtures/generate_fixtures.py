@@ -37,7 +37,7 @@ def rand_seq(rng, n):
 
 
 def build_genome(rng):
-    chr1 = rand_seq(rng, 230000)  # the 60-gene cursor ends ~216kb (live: reads past the genome end came out empty)
+    chr1 = rand_seq(rng, 4200000)  # the 60-gene cursor ends ~216kb (live: reads past the genome end came out empty)
     chr2 = rand_seq(rng, 5000)
     return chr1, chr2
 
@@ -61,7 +61,8 @@ for _i in range(60):
         _cursor = _start + 400
     GENES.append((f"GENE{_i + 1}", BIOTYPES[_i % len(BIOTYPES)],
                   "+" if _i % 2 == 0 else "-", _exons))
-    _cursor += 600  # intergenic gap
+    _cursor += 60000  # intergenic gap (100x spread: contiguous aligners like bowtie2
+    # otherwise collide on the packed genes — live: 64% picard duplicates, dupRadar density NaN)
 
 
 def write_reference(chr1, chr2):
