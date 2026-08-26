@@ -162,10 +162,12 @@ memory = "6G"
 # Default sample cohort. In oxo-flow a workflow has exactly one sample source;
 # the upstream samplesheet (id/fastq_1/fastq_2/strandedness) is represented by
 # one [[sample_groups]] block of paired-end samples sharing the pipeline-level
-# strandedness above.
+# strandedness above. umi1_pattern mirrors the upstream samplesheet column and
+# is consumed only by the with_umi branch (umitools_extract_umis).
 [[sample_groups]]
 name = "samples"
 samples = ["S1", "S2"]
+metadata = { umi1_pattern = "NNNNNN" }
 
 # Auto-built reference: the STAR index is an upstream input artifact (the
 # port ships no binary index), so the engine builds it from the shipped
@@ -375,6 +377,10 @@ for f in {input}; do
 done
 cd mqc_stage
 multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --filename multiqc_report.html --replace-names name_replacement.txt .
+# The aligner subdir only exists when an earlier aligner-scoped rule
+# (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
+# mkdir -p before the move (live: hisat2 multiqc lost the report).
+mkdir -p ../{config.out_dir}/multiqc/{config.aligner}
 mv multiqc_report.html ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 cd ..
 rm -rf mqc_stage
