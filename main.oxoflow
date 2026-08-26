@@ -167,7 +167,7 @@ memory = "6G"
 [[sample_groups]]
 name = "samples"
 samples = ["S1", "S2"]
-metadata = { umi1_pattern = "NNNNNN" }
+metadata = { umi1_pattern = "NNNNNN", umi2_pattern = "" }
 
 # Auto-built reference: the STAR index is an upstream input artifact (the
 # port ships no binary index), so the engine builds it from the shipped
