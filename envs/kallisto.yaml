@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 KALLISTO_INDEX /
+# KALLISTO_QUANT module environment (modules/nf-core/kallisto/index/environment.yml).
+name: kallisto
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::kallisto=0.51.1

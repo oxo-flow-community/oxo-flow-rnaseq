@@ -41,6 +41,7 @@ import yaml
 TOTAL_READS_RE = re.compile(r"([\d.]+)\ssequences processed in total")
 FILTERED_READS_RE = re.compile(r"shorter than the length cutoff[^:]+:\s*([\d.]+)")
 UNIQUELY_MAPPED_RE = re.compile(r"Uniquely mapped reads %\s*\|\s*([\d.]+)%")
+BOWTIE2_OVERALL_ALIGNMENT_RE = re.compile(r"(\d+\.\d+)% overall alignment rate")
 
 INFER_RE = [
     re.compile(r"Fraction of reads failed to determine:\s([\d.]+)"),
@@ -199,11 +200,21 @@ def main():
     mapped_rows = []
     for sid in samples:
         log = os.path.join(os.path.dirname(args.out_dir), args.aligner, "log", f"{sid}.Log.final.out")
+        star_log = os.path.exists(log)
+        if not star_log:
+            # bowtie2_salmon: upstream ALIGN_BOWTIE2 emits {id}.bowtie2.log
+            # ("N% overall alignment rate") and the multiqc_rnaseq subworkflow
+            # parses it with getBowtie2PercentMapped into the same
+            # fail_mapped table. The header line below stays the hardcoded
+            # STAR text — that is an upstream quirk we preserve verbatim.
+            log = os.path.join(os.path.dirname(args.out_dir), args.aligner, "log", f"{sid}.bowtie2.log")
         if not os.path.exists(log):
             continue
         percent = None
         for line in open(log):
             m = UNIQUELY_MAPPED_RE.search(line)
+            if not m and not star_log:
+                m = BOWTIE2_OVERALL_ALIGNMENT_RE.search(line)
             if m:
                 percent = float(m.group(1))
         if percent is not None and percent < args.min_mapped_reads:

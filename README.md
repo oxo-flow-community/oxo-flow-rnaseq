@@ -55,12 +55,13 @@ prep — is not ported; you must provide these):**
 - `chrom_sizes` — UCSC chrom.sizes file
 
 The branch index builders ARE ported: the STAR index is built by the
-`[[references]]` builder, and the HISAT2 / RSEM / Salmon indexes by
+`[[references]]` builder, and the HISAT2 / RSEM / Salmon / Bowtie2 (from the
+transcript FASTA, upstream `BOWTIE2_BUILD`) / Kallisto indexes by
 when-gated builder rules — all from the shipped fixtures when the
 corresponding `config.<tool>_index` key is empty. For real data, set
 `config.star_index` / `config.hisat2_index` / `config.rsem_index` /
-`config.salmon_index` to your own index directories (they are symlinked in
-instead of rebuilt).
+`config.salmon_index` / `config.bowtie2_index` / `config.kallisto_index` to
+your own index directories (they are symlinked in instead of rebuilt).
 
 **Reads:** `reads_dir/<sample>_R1.fastq.gz` and `reads_dir/<sample>_R2.fastq.gz`
 (paired-end only). The sample cohort is declared in `[[sample_groups]]`.
@@ -74,7 +75,7 @@ The repository ships tiny synthetic fixtures for all of the above
 node capacity accordingly.
 
 **Tool delivery:** conda environments with pinned versions. Every rule
-declares `[rules.environment] conda = "envs/<tool>.yaml"` (20 environments
+declares `[rules.environment] conda = "envs/<tool>.yaml"` (21 environments
 in `envs/`), with each package version pinned exactly to the upstream
 nf-core/rnaseq 3.26.0 module environment (e.g. `star=2.7.11b`,
 `salmon=1.10.3`, `multiqc=1.33`). No containers are used — you need conda or
@@ -132,7 +133,11 @@ the upstream defaults:
 | `out_dir` | `--outdir` | `results` | |
 | `reads_dir` | (samplesheet) | `test/fixtures/raw` | input FASTQs |
 | `strandedness` | samplesheet column | `unstranded` | `forward` / `reverse` / `unstranded`; `auto` not ported (pipeline-level setting) |
-| `aligner` | `--aligner` | `star_salmon` | only `star_salmon` is ported |
+| `aligner` | `--aligner` | `star_salmon` | `star_salmon` (default), `star_rsem`, `hisat2`, `bowtie2_salmon` are ported; downstream paths follow `results/<aligner>/` like upstream |
+| `pseudo_aligner` | `--pseudo_aligner` | (empty) | empty = alignment-mode Salmon only; `salmon` / `kallisto` ported (see fidelity rows 24-27) |
+| `bowtie2_index` | `--bowtie2_index` | (empty) | empty = built from `transcript_fasta` by the `bowtie2_index` builder when the branch is enabled; a user-supplied path is symlinked in |
+| `kallisto_index` | `--kallisto_index` | (empty) | empty = built from `transcript_fasta` by the `kallisto_index` builder when the branch is enabled; a user-supplied path is symlinked in |
+| `pseudo_aligner_kmer_size` | `--pseudo_aligner_kmer_size` | `31` | `kallisto index -k` (upstream default) |
 | `transcript_fasta` | `--transcript_fasta` | `test/fixtures/reference/transcripts.fa` | Salmon alignment-mode quant + StringTie |
 | `salmon_quant_libtype` | `--salmon_quant_libtype` | (empty) | empty = derive from `strandedness` (forward → ISF, reverse → ISR, else IU); set e.g. `A` for auto-detection |
 | `min_trimmed_reads` | `--min_trimmed_reads` | `10000` | used for the MultiQC fail_trimmed table only (per-sample drop filter not ported) |
@@ -194,6 +199,15 @@ the upstream defaults:
 - `multiqc/` — custom content files and
   `multiqc/star_salmon/multiqc_report.html`
 
+With `aligner = "bowtie2_salmon"` the alignment outputs land under
+`results/bowtie2_salmon/` (`<id>.bam`, `<id>.sorted.bam`+`.bai`,
+`<id>/quant.sf` + `salmon.merged.*` tables, `log/<id>.bowtie2.log`), and the
+Salmon quant dirs are `results/bowtie2_salmon/<id>/` with `logs/salmon_quant.log`
+— exactly the upstream `params.aligner`-based layout. With
+`pseudo_aligner = "kallisto"` the quant dirs are `results/kallisto/<id>/`
+(`abundance.tsv`, `abundance.h5`, `run_info.json`, `kallisto_quant.log`) and
+the merged tables/SE RDS are named `kallisto.merged.*` / `kallisto.*.rds`.
+
 ## Source
 
 Upstream: [`nf-core/rnaseq`](https://github.com/nf-core/rnaseq) @ `3.26.0`
@@ -215,7 +229,7 @@ Known, documented deviations:
 |---|---|---|---|
 | 1 | Per-sample strandedness from the samplesheet (`auto` supported) | Pipeline-level `config.strandedness`, three explicit values only | oxo-flow has one config per run; `auto` needs a Salmon inference branch |
 | 2 | `PREPARE_GENOME` prepares the reference artifacts (fasta, gtf, transcript_fasta, gene_bed, chrom_sizes) and builds the branch indexes (STAR / HISAT2 / RSEM / Salmon) | The artifacts are inputs; the index BUILDERS are ported: STAR via the `[[references]]` builder, HISAT2 / RSEM / Salmon via when-gated builder rules that build from the shipped fixtures when the config key is empty and symlink a user-supplied directory otherwise | The artifact prep stays excluded as infra; index building is now part of the run (see the fidelity rows below) |
-| 3 | Non-default branches: `star_rsem`, `hisat2`, `--with_umi`, `--pseudo_aligner salmon` | Ported — see rows 16-23 for their deviations | The `bowtie2_salmon` aligner, the `kallisto` pseudo-aligner and the RSEM `as_quantification` mode remain excluded |
+| 3 | Non-default branches: `star_rsem`, `hisat2`, `bowtie2_salmon`, `--with_umi`, `--pseudo_aligner salmon`, `--pseudo_aligner kallisto` | Ported — see rows 16-27 for their deviations | Only the RSEM `as_quantification` mode remains excluded |
 | 4 | SALMON_QUANT (alignment mode) + CUSTOM_TX2GENE + TXIMETA_TXIMPORT + SUMMARIZEDEXPERIMENT_* — the default-path quantification chain | Ported as `quantification::salmon_quant` / `tx2gene` / `tximport` / `summarizedexperiment` | The upstream 4-process chain is mirrored as 4 rules; tx2gene runs on the first sample's quant dir (upstream `.first()`); the SE process runs twice (gene + transcript) inside one rule with the upstream `--assay_names` values |
 | 5 | `min_trimmed_reads` gate drops failing samples from the downstream chain | Only the MultiQC fail_trimmed table is produced | The filter is data-dependent per-sample state (n of trimmed reads), not expressible as a static DAG |
 | 6 | `skip_trimming` / `skip_markduplicates` rewire the downstream inputs (QC runs on raw / sorted BAM) | `skip_trimming=true` / `skip_markduplicates=true` break the downstream chain (trimmed reads / markdup BAM are rule inputs) | oxo-flow inputs are static paths; use the defaults |
@@ -236,19 +250,26 @@ Known, documented deviations:
 | 21 | `HISAT2_EXTRACTSPLICESITES` names the splice-site file after the GTF (`{gtf.baseName}.splice_sites.txt`) | Fixed canonical path `reference/genes.splice_sites.txt` | The port's hisat2 index builder and align rules consume it; the align command's `--rna-strandness` is rendered via a shell branch (FR forward / RF reverse / omitted unstranded — same values as the upstream `meta.strandedness` branch) |
 | 22 | `SALMON_QUANT` (alignment mode) runs without `--no-version-check` | The port adds `--no-version-check` | Pre-existing port-wide deviation kept for consistency across all salmon quant rules (bam / umi / pseudo) |
 | 23 | RSEM tximport reads the flat per-sample `*.isoforms.results` files; `DESEQ2_QC_RSEM` passes `--id_col 1 --sample_suffix '' --count_col 3` via the rsem deseq2 config | `tx2gene_rsem` stages the first sample's `isoforms.results` into a flat dir (same first-sample semantics as the salmon tx2gene); `deseq2_qc_rsem` passes the three args explicitly | The args equal the port script defaults but are passed explicitly for parity; the flat staging preserves the upstream first-sample `.first()` semantics |
+| 24 | `bowtie2_salmon` aligner: `BOWTIE2_ALIGN` (sort_bam=false → `samtools view` keeps the query-grouped orig_bam) → `BAM_SORT_STATS_SAMTOOLS` → `QUANTIFY_BAM_SALMON` on the orig_bam; the BAM-chain prefix is hardcoded `salmon.merged` | Ported as `alignment::bowtie2_index` + `bowtie2_align` (+3 read-source variants) + `samtools_sort_bowtie2`; `quantification::salmon_quant_bowtie2` quantifies the orig_bam (`-t transcript_fasta -a orig_bam`); tx2gene/tximport/SE/DESeq2 share the star_salmon rules via widened when-gates | The upstream `salmon.merged` prefix quirk is preserved (quantify_bam_salmon.config hardcodes it for both aligners); the UMI transcriptome chain (`bam_sort_transcriptome_bowtie2` → dedup → `salmon_quant_umi`) mirrors the STAR chain; the MultiQC fail_mapped table keeps the hardcoded `STAR uniquely mapped reads (%)` header with the percent parsed from `{id}.bowtie2.log` ("N% overall alignment rate") — an upstream quirk of multiqc_rnaseq |
+| 25 | `kallisto` pseudo-aligner: `KALLISTO_INDEX` (`kallisto index -k 31 -i kallisto tx.fa`, process_medium) + `KALLISTO_QUANT` (process_high, `--gtf`, `--fr/--rf-stranded` from strandedness, `2> >(tee log)`) | Ported as `quantification::kallisto_index` + `kallisto_quant_pseudo` (+3 read-source variants) reusing the salmon pseudo branch's when gates; tx2gene/tximport/SE/DESeq2 pseudo rules are shared via widened when-gates with the tool label (`--quant-type`, MultiQC `KALLISTO DESeq2 ...` labels) | The port scripts (tx2gene.py / tximport.r) already handle kallisto (`abundance.tsv`, `dropInfReps=TRUE`); `-k` comes from `config.pseudo_aligner_kmer_size` (upstream default 31); extra_kallisto_quant_args stays at the upstream default (null) |
+| 26 | `KALLISTO_QUANT` logs: upstream publishes the work-dir `{prefix}.log` (the `.run_info.json` and `.log` copies are unpublished, saveAs null) and feeds MultiQC from the work dir | The port declares `{pseudo_aligner}/<id>/kallisto_quant.log` as a rule output and stages it into MultiQC as `<id>.kallisto_quant.log` | oxo-flow has no work dirs, so the log must be a declared output to reach MultiQC; the MultiQC kallisto module matches by content ("[quant] finding pseudoalignments for the reads"), so the per-sample rename is safe |
+| 27 | `DESEQ2_QC_PSEUDO` MultiQC labels come from `params.pseudo_aligner` (SALMON / KALLISTO) | The port derives the label from `config.pseudo_aligner` at render time (`tr [:lower:] [:upper:]`) | Config-derived label — same value as upstream's param-derived label |
 
 ## Not ported (metadata `excluded`)
 
-`bowtie2_salmon` alignment (upstream `--aligner`); `kallisto` pseudo-alignment
-(upstream `--pseudo_aligner`); the RSEM `as_quantification` mode; `PREPARE_GENOME`
-reference-artifact prep (fasta, gtf, transcript_fasta, gene_bed, chrom_sizes are
-inputs; the branch index builders ARE ported — see row 2); per-sample
-`min_trimmed_reads` filtering (data-dependent per-sample state; only the
-MultiQC fail_trimmed table is produced); `cat_fastq` (only active for samples
-with more than one fastq pair); `auto` strandedness (per-sample inference from
-the samplesheet); the DESeq2 QC sample-name group decomposition (Group columns
-for PCA-by-group plots); the Nextflow-param-rendered MultiQC sections
-(`workflow_summary_mqc.yaml` / `methods_description_mqc.yaml`).
+The RSEM `as_quantification` mode (upstream `--aligner star_rsem
+--rsem_as_quantification`: a mode-level rewrite of the whole quantification
+branch, not a composable branch); `PREPARE_GENOME` reference-artifact prep
+(fasta, gtf, transcript_fasta, gene_bed, chrom_sizes are inputs; the branch
+index builders ARE ported — see row 2); per-sample `min_trimmed_reads`
+filtering (data-dependent per-sample state; only the MultiQC fail_trimmed
+table is produced); `cat_fastq` (only active for samples with more than one
+fastq pair — not expressible in the port's one-pair-per-sample sample model);
+`auto` strandedness (per-sample inference from the samplesheet — the inferred
+per-sample value has no consumer in a static DAG); the DESeq2 QC sample-name
+group decomposition (Group columns for PCA-by-group plots); the
+Nextflow-param-rendered MultiQC sections (`workflow_summary_mqc.yaml` /
+`methods_description_mqc.yaml`).
 
 ## Test
 

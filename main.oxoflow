@@ -19,11 +19,11 @@
 # - Read QC / alignment / BAM QC / bigWig rules live in modules/*.oxoflow and
 #   are pulled in below via [[include]] namespaces.
 #
-# Not ported (see README fidelity table): rsem / hisat2 / umicollapse
-# quantification, as_quantification, PREPARE_GENOME (reference artifacts are
-# inputs), per-sample min_trimmed_reads filtering, UMI extraction, BBSplit /
-# rRNA removal, and the Nextflow-param-rendered workflow_summary /
-# methods_description MultiQC sections.
+# Not ported (see README fidelity table): RSEM as_quantification, PREPARE_GENOME
+# (reference artifacts are inputs), per-sample min_trimmed_reads filtering,
+# 'auto' strandedness (samplesheet-derived state has no consumer in a static
+# DAG), cat_fastq multi-pair concatenation, DESeq2 group decomposition, and the
+# Nextflow-param-rendered workflow_summary / methods_description MultiQC sections.
 
 [workflow]
 name = "oxo-flow-rnaseq"
@@ -54,9 +54,12 @@ transcript_fasta = "test/fixtures/reference/transcripts.fa"
 # and the forward/reverse bigWig gates.
 strandedness = "unstranded"
 # Aligner selector (upstream: --aligner). The port supports the upstream
-# default 'star_salmon' plus the non-default branches (star_rsem, hisat2);
-# all downstream results paths follow {config.out_dir}/{config.aligner}/...
-# exactly like upstream's params.aligner-based publishDirs.
+# default 'star_salmon' plus the non-default branches (star_rsem, hisat2,
+# bowtie2_salmon); all downstream results paths follow
+# {config.out_dir}/{config.aligner}/... exactly like upstream's
+# params.aligner-based publishDirs. bowtie2_salmon maps reads to the
+# transcriptome with Bowtie2 and quantifies the orig_bam with Salmon
+# (upstream ALIGN_BOWTIE2 -> QUANTIFY_BAM_SALMON).
 aligner = "star_salmon"
 # Thresholds (upstream params with the same defaults).
 min_trimmed_reads = 10000
@@ -134,14 +137,19 @@ save_non_ribo_reads = false
 skip_alignment = false
 rsem_index = ""
 hisat2_index = ""
+bowtie2_index = ""
 salmon_index = ""
 bbsplit_index = ""
 sortmerna_index = ""
 # Pseudo-alignment (upstream: --pseudo_aligner, 'salmon' or 'kallisto';
-# default null = alignment-mode Salmon only). The port supports 'salmon';
-# 'kallisto' is not ported (see README fidelity table).
+# default null = alignment-mode Salmon only). Both aligners are ported; the
+# index builders are when-gated on this key (salmon_index / kallisto_index
+# short-circuit with a user-supplied path). pseudo_aligner_kmer_size is the
+# upstream KALLISTO_INDEX -k default (31).
 pseudo_aligner = ""
 skip_pseudo_alignment = false
+kallisto_index = ""
+pseudo_aligner_kmer_size = 31
 # tximport gene attributes (upstream: --gtf_group_features /
 # --gtf_extra_attributes; same defaults).
 gtf_group_features = "gene_id"
@@ -215,6 +223,7 @@ expand_inputs = [
     # producer outputs that still contain the literal {config.out_dir} wildcard.
     { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_1.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.bowtie2.log", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.aligner}/rseqc/infer_experiment/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
 ]
 output = [
@@ -300,6 +309,7 @@ expand_inputs = [
     { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_1.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_2.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.bowtie2.log", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.aligner}/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.stats", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
@@ -327,6 +337,7 @@ expand_inputs = [
     { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.aligner}/{sample}.stat", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.pseudo_aligner}/{sample}/kallisto_quant.log", variables = { sample = "config.samples_list" } },
 ]
 output = [
     "{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html",
@@ -350,6 +361,14 @@ for f in {input}; do
             d="mqc_stage/$(basename "$(dirname "$f")")"
             mkdir -p "$d"
             cp -L "$f" "$d/"
+            ;;
+        */kallisto_quant.log)
+            # Kallisto logs carry no per-sample filename (upstream publishes
+            # them unrenamed from the work dir), so rename on stage to
+            # <sample>.kallisto_quant.log. The MultiQC kallisto module matches
+            # by content ("[quant] finding pseudoalignments for the reads"),
+            # so the rename is safe.
+            cp -L "$f" "mqc_stage/$(basename "$(dirname "$f")").kallisto_quant.log"
             ;;
         *) cp -L "$f" mqc_stage/ ;;
     esac
