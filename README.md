@@ -203,7 +203,12 @@ With `aligner = "bowtie2_salmon"` the alignment outputs land under
 `results/bowtie2_salmon/` (`<id>.bam`, `<id>.sorted.bam`+`.bai`,
 `<id>/quant.sf` + `salmon.merged.*` tables, `log/<id>.bowtie2.log`), and the
 Salmon quant dirs are `results/bowtie2_salmon/<id>/` with `logs/salmon_quant.log`
-— exactly the upstream `params.aligner`-based layout. With
+— exactly the upstream `params.aligner`-based layout. Note (live on synthetic
+fixtures, engine 0.15.0): under a contiguous aligner the ~30% spliced fixture
+reads map clipped and their positional collisions dominate dupRadar's density
+plot — `duprateExpDensPlot` dies with a NaN bandwidth, upstream script
+unchanged. Alignment, Salmon quant and DESeq2 all pass; the dupRadar density
+plot needs real-library data. With
 `pseudo_aligner = "kallisto"` the quant dirs are `results/kallisto/<id>/`
 (`abundance.tsv`, `abundance.h5`, `run_info.json`, `kallisto_quant.log`) and
 the merged tables/SE RDS are named `kallisto.merged.*` / `kallisto.*.rds`.
