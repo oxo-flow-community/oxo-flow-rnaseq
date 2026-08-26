@@ -443,6 +443,9 @@ output = [
 shell = """
 set -euo pipefail
 #Prevent matplotlib from using /tmp
+# umi_tools dedup fetches by position — the transcriptome BAM must be
+# indexed (live: pysam "fetch called on bamfile without index").
+samtools index {input[0]}
 mkdir .tmp && chmod 777 .tmp
 MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
 mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
@@ -467,6 +470,9 @@ output = [
 shell = """
 set -euo pipefail
 #Prevent matplotlib from using /tmp
+# umi_tools dedup fetches by position — the transcriptome BAM must be
+# indexed (live: pysam "fetch called on bamfile without index").
+samtools index {input[0]}
 mkdir .tmp && chmod 777 .tmp
 MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
 mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
@@ -494,6 +500,9 @@ output = [
 shell = """
 set -euo pipefail
 #Prevent matplotlib from using /tmp
+# umi_tools dedup fetches by position — the transcriptome BAM must be
+# indexed (live: pysam "fetch called on bamfile without index").
+samtools index {input[0]}
 mkdir .tmp && chmod 777 .tmp
 MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --output-stats {sample}.umi_dedup.transcriptome.sorted --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
 mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
@@ -522,6 +531,9 @@ output = [
 shell = """
 set -euo pipefail
 #Prevent matplotlib from using /tmp
+# umi_tools dedup fetches by position — the transcriptome BAM must be
+# indexed (live: pysam "fetch called on bamfile without index").
+samtools index {input[0]}
 mkdir .tmp && chmod 777 .tmp
 MPLCONFIGDIR=.tmp TMPDIR=.tmp PYTHONHASHSEED=0 umi_tools dedup -I {input[0]} -S {sample}.umi_dedup.transcriptome.sorted.bam -L {sample}.umi_dedup.transcriptome.sorted.log --output-stats {sample}.umi_dedup.transcriptome.sorted --paired --unpaired-reads=discard --chimeric-pairs=discard --method='directional' --random-seed=100
 mkdir -p {config.out_dir}/{config.aligner}/umitools/transcriptomic_dedup_log
