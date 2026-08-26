@@ -95,7 +95,10 @@ memory = "12G"
 conda = "envs/fastqc.yaml"
 
 # UMITOOLS_EXTRACT (PE branch, with_umi && !skip_umi_extract): no ext.args
-# override upstream, so the extract runs with no extra flags. The extracted
+# override upstream, so the extract runs with no extra flags beyond the
+# barcode pattern. Upstream takes the pattern from the samplesheet's
+# umi1_pattern column; the port reads it from the sample-group metadata key
+# of the same name (umi2_pattern optional, like upstream). The extracted
 # reads replace the raw reads as the trimmer input (trimgalore_umi below).
 [[rules]]
 name = "umitools_extract_umis"
@@ -107,8 +110,21 @@ output = [
     "{config.out_dir}/umitools/{sample}.umi_extract.log",
 ]
 shell = """
+BCP1="{wildcard.umi1_pattern}"
+BCP2="{wildcard.umi2_pattern}"
+if [ -z "$BCP1" ]; then
+    echo "[oxo-flow-rnaseq] error: with_umi needs a UMI barcode pattern — set umi1_pattern in the [[sample_groups]] metadata (upstream samplesheet umi1_pattern column)" >&2
+    exit 1
+fi
+if [ -n "$BCP2" ]; then
+    BCP2_ARG="--bc-pattern2 $BCP2"
+else
+    BCP2_ARG=""
+fi
 umi_tools \\
     extract \\
+    --bc-pattern "$BCP1" \\
+    $BCP2_ARG \\
     -I {input[0]} \\
     --read2-in={input[1]} \\
     -S {sample}.umi_extract_1.fastq.gz \\
