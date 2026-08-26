@@ -149,9 +149,13 @@ def write_reads(chr1, chr2):
     # needs enough samples (live: estimateDispersionsFit failed on 2).
     for sample in ("S1", "S2", "S3", "S4", "S5", "S6"):
         rng = random.Random(SEED + sum(ord(c) for c in sample))  # hash() is PYTHONHASHSEED-salted — not reproducible across runs
+        # Log-normal per-gene expression weights: high-expression genes get
+        # more reads AND more PCR duplicates, like real data — a uniform
+        # dup rate collapsed dupRadar's density bandwidth (NaN, live).
+        expr = [rng.lognormvariate(0, 1.2) for _ in GENES]
         r1s, r2s = [], []
         for _ in range(1200):
-            gene = rng.choice(GENES)
+            gene = rng.choices(GENES, weights=expr, k=1)[0]
             # Unique fragments only: 1200 random draws over 400bp exons
             # collided massively (64% picard duplicates live) and killed
             # dupRadar's density plot (bandwidth NaN).
@@ -171,10 +175,14 @@ def write_reads(chr1, chr2):
                 r2 = r2[:READ_LEN - 20] + ADAPTER[:20]
             r1s.append(r1)
             r2s.append(r2)
-        # A few duplicated pairs so DupRate/dupRadar have signal
-        for i in range(20):
-            r1s[-(i + 1)] = r1s[i]
-            r2s[-(i + 1)] = r2s[i]
+        # PCR-duplicated pairs biased to high-expression genes (dupRadar
+        # signal with a realistic expression-dup gradient, ~5% overall).
+        gidx = [GENES.index(g) for g in rng.choices(GENES, weights=expr, k=60)]
+        for n, i in enumerate(gidx):
+            if i >= len(r1s):
+                continue
+            r1s[-(n + 1)] = r1s[i]
+            r2s[-(n + 1)] = r2s[i]
         qual = "I" * READ_LEN
         with gzip.open(os.path.join(RAW, f"{sample}_R1.fastq.gz"), "wt") as f1, \
              gzip.open(os.path.join(RAW, f"{sample}_R2.fastq.gz"), "wt") as f2:
