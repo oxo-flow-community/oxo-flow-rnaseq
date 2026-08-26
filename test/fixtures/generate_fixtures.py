@@ -129,7 +129,11 @@ def fragment_sequence(chr1, exons, rng, spliced=True):
         pos = exon_b[0] + rng.randrange(0, max(1, exon_b[1] - exon_b[0] - READ_LEN))
         r2 = reverse_complement(chr1[pos:pos + READ_LEN])
         return r1, r2
-    start = rng.randrange(exons[0][0], max(exons[0][0] + 1, exons[0][1] - (READ_LEN * 2 + 100)))
+    # r2 ends at start+120+READ_LEN, so the window needs only
+    # READ_LEN+120 bp of exon — the old bound (2*READ_LEN+100) left a
+    # 1-base range and every unspliced read of a gene started at the
+    # same base (live: 64% picard duplicates, dupRadar bandwidth NaN).
+    start = rng.randrange(exons[0][0], max(exons[0][0] + 1, exons[0][1] - READ_LEN - 120))
     r1 = chr1[start:start + READ_LEN]
     r2 = reverse_complement(chr1[start + 120: start + 120 + READ_LEN])  # ~120 bp insert
     if len(r1) < READ_LEN or len(r2) < READ_LEN:
@@ -148,7 +152,13 @@ def write_reads(chr1, chr2):
         r1s, r2s = [], []
         for _ in range(1200):
             gene = rng.choice(GENES)
-            r1, r2 = fragment_sequence(chr1, gene[3], rng)
+            # Unique fragments only: 1200 random draws over 400bp exons
+            # collided massively (64% picard duplicates live) and killed
+            # dupRadar's density plot (bandwidth NaN).
+            for _attempt in range(50):
+                r1, r2 = fragment_sequence(chr1, gene[3], rng)
+                if r1 not in r1s:
+                    break
             if gene[2] == "-":
                 # the '-' transcript's 5' end = rc of the genome's
                 # downstream region (= the FR mate), its 3' end = rc of
