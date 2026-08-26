@@ -110,8 +110,8 @@ output = [
     "{config.out_dir}/umitools/{sample}.umi_extract.log",
 ]
 shell = """
-BCP1="{wildcard.umi1_pattern}"
-BCP2="{wildcard.umi2_pattern}"
+BCP1="{umi1_pattern}"
+BCP2="{umi2_pattern}"
 if [ -z "$BCP1" ]; then
     echo "[oxo-flow-rnaseq] error: with_umi needs a UMI barcode pattern — set umi1_pattern in the [[sample_groups]] metadata (upstream samplesheet umi1_pattern column)" >&2
     exit 1

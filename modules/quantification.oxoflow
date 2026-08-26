@@ -759,7 +759,7 @@ rsem-calculate-expression \\
     --paired-end \\
     {input[0]} \\
     $INDEX \\
-    {sample}
+    {sample} > {sample}.log 2>&1
 mkdir -p {config.out_dir}/{config.aligner}/log
 mv {sample}.genes.results {sample}.isoforms.results {sample}.stat {config.out_dir}/{config.aligner}/
 mv {sample}.log {config.out_dir}/{config.aligner}/log/
@@ -800,7 +800,7 @@ rsem-calculate-expression \\
     --paired-end \\
     {input[0]} \\
     $INDEX \\
-    {sample}
+    {sample} > {sample}.log 2>&1
 mkdir -p {config.out_dir}/{config.aligner}/log
 mv {sample}.genes.results {sample}.isoforms.results {sample}.stat {config.out_dir}/{config.aligner}/
 mv {sample}.log {config.out_dir}/{config.aligner}/log/
