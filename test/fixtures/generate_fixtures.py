@@ -179,8 +179,8 @@ def write_reads(chr1, chr2):
         with gzip.open(os.path.join(RAW, f"{sample}_R1.fastq.gz"), "wt") as f1, \
              gzip.open(os.path.join(RAW, f"{sample}_R2.fastq.gz"), "wt") as f2:
             for i, (r1, r2) in enumerate(zip(r1s, r2s), start=1):
-                f1.write(f"@{sample}_{i}/1\n{r1}\n+\n{qual}\n")
-                f2.write(f"@{sample}_{i}/2\n{r2}\n+\n{qual}\n")
+                f1.write(f"@{sample}_{i}\n{r1}\n+\n{qual}\n")
+                f2.write(f"@{sample}_{i}\n{r2}\n+\n{qual}\n")
 
 
 def main():
