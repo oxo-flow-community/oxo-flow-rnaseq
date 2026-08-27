@@ -56,8 +56,13 @@ if [ -n "{config.chrom_sizes}" ]; then
     ln -s "$CHROM_SIZES" {config.out_dir}/reference/chrom_sizes.txt
     exit 0
 fi
+# {input[0]} renders as declared (relative fixture paths are relative
+# to the workflow root) — absolutize like the symlink branches above, or
+# the chrom_sizes_wd/genome.fa link resolves against its own directory
+# and samtools faidx fails (live: Failed to open chrom_sizes_wd/genome.fa).
+FASTA_ABS=$(cd "$(dirname {input[0]})" && pwd)/$(basename {input[0]})
 mkdir chrom_sizes_wd
-ln -s {input[0]} chrom_sizes_wd/genome.fa
+ln -s "$FASTA_ABS" chrom_sizes_wd/genome.fa
 samtools faidx chrom_sizes_wd/genome.fa
 cut -f 1,2 chrom_sizes_wd/genome.fa.fai > {config.out_dir}/reference/chrom_sizes.txt
 """
