@@ -19,11 +19,15 @@
 # - Read QC / alignment / BAM QC / bigWig rules live in modules/*.oxoflow and
 #   are pulled in below via [[include]] namespaces.
 #
-# Not ported (see README fidelity table): RSEM as_quantification, PREPARE_GENOME
-# (reference artifacts are inputs), per-sample min_trimmed_reads filtering,
-# 'auto' strandedness (samplesheet-derived state has no consumer in a static
-# DAG), cat_fastq multi-pair concatenation, DESeq2 group decomposition, and the
-# Nextflow-param-rendered workflow_summary / methods_description MultiQC sections.
+# Not ported (see README fidelity table): per-sample min_trimmed_reads
+# filtering, 'auto' strandedness (samplesheet-derived state has no consumer
+# in a static DAG), cat_fastq multi-pair concatenation, the Nextflow-param-
+# rendered workflow_summary / methods_description MultiQC sections, and the
+# GTF preprocessing chain (CUSTOM_GTFFILTER, gffread GFF->GTF, additional_fasta,
+# GENCODE preprocessing, .gz/.tar.gz reference handling). PREPARE_GENOME
+# derivations ARE ported: gene_bed / chrom_sizes / transcript_fasta are
+# auto-built from fasta+gtf in modules/prepare_genome.oxoflow when the
+# corresponding config key is empty (defaults point at the shipped fixtures).
 
 [workflow]
 name = "oxo-flow-rnaseq"
@@ -39,9 +43,12 @@ out_dir = "results"
 # this at your data.
 reads_dir = "test/fixtures/raw"
 # Reference artifacts (upstream: --fasta / --gtf / --gene_bed / --chrom_sizes
-# / --transcript_fasta / STAR index). PREPARE_GENOME is not ported: the STAR
-# index is an input. transcript_fasta feeds Salmon alignment-mode quant and
-# StringTie.
+# / --transcript_fasta / STAR index). fasta and gtf are always inputs; the
+# other three are inputs by default but are DERIVED from fasta+gtf when the
+# key is empty (modules/prepare_genome.oxoflow mirrors upstream PREPARE_GENOME:
+# gene_bed via ea-utils gtf2bed, chrom_sizes via samtools faidx, transcript_fasta
+# via RSEM). The STAR index is an input (auto-built from the shipped fixture
+# genome by the [[references]] builder below when SAindex is missing).
 fasta = "test/fixtures/reference/genome.fa"
 gtf = "test/fixtures/reference/genes.gtf"
 gene_bed = "test/fixtures/reference/gene.bed"
@@ -189,6 +196,10 @@ conda = "envs/star.yaml"
 [[include]]
 path = "modules/fastq_qc.oxoflow"
 namespace = "fastq_qc"
+
+[[include]]
+path = "modules/prepare_genome.oxoflow"
+namespace = "prepare_genome"
 
 [[include]]
 path = "modules/alignment.oxoflow"
