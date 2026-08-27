@@ -69,7 +69,7 @@ conda = "envs/bedtools.yaml"
 [[rules]]
 name = "bedclip_fw"
 description = "Clip forward bedGraph to chrom sizes (nf-core UCSC_BEDCLIP, prefix <id>.clip.forward)"
-input = ["{config.out_dir}/{config.aligner}/{sample}.forward.bedGraph", "{config.chrom_sizes}"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.forward.bedGraph", "{config.out_dir}/reference/chrom_sizes.txt"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.clip.forward.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
@@ -84,7 +84,7 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bedclip_rev"
 description = "Clip reverse bedGraph to chrom sizes (nf-core UCSC_BEDCLIP, prefix <id>.clip.reverse)"
-input = ["{config.out_dir}/{config.aligner}/{sample}.reverse.bedGraph", "{config.chrom_sizes}"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.reverse.bedGraph", "{config.out_dir}/reference/chrom_sizes.txt"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.clip.reverse.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
@@ -99,7 +99,7 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bedclip_combined"
 description = "Clip combined bedGraph to chrom sizes (nf-core UCSC_BEDCLIP, prefix <id>.clip)"
-input = ["{config.out_dir}/{config.aligner}/{sample}.bedGraph", "{config.chrom_sizes}"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.bedGraph", "{config.out_dir}/reference/chrom_sizes.txt"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.clip.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
@@ -115,7 +115,7 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bigwig_fw"
 description = "Forward-strand bigWig (nf-core UCSC_BEDGRAPHTOBIGWIG, prefix <id>.forward)"
-input = ["{config.out_dir}/{config.aligner}/{sample}.clip.forward.bedGraph", "{config.chrom_sizes}"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.clip.forward.bedGraph", "{config.out_dir}/reference/chrom_sizes.txt"]
 output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.forward.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}
@@ -130,7 +130,7 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bigwig_rev"
 description = "Reverse-strand bigWig (nf-core UCSC_BEDGRAPHTOBIGWIG, prefix <id>.reverse)"
-input = ["{config.out_dir}/{config.aligner}/{sample}.clip.reverse.bedGraph", "{config.chrom_sizes}"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.clip.reverse.bedGraph", "{config.out_dir}/reference/chrom_sizes.txt"]
 output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.reverse.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}
@@ -145,7 +145,7 @@ conda = "envs/ucsc.yaml"
 [[rules]]
 name = "bigwig_combined"
 description = "Combined bigWig (nf-core UCSC_BEDGRAPHTOBIGWIG, prefix <id>)"
-input = ["{config.out_dir}/{config.aligner}/{sample}.clip.bedGraph", "{config.chrom_sizes}"]
+input = ["{config.out_dir}/{config.aligner}/{sample}.clip.bedGraph", "{config.out_dir}/reference/chrom_sizes.txt"]
 output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}

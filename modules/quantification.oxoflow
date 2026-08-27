@@ -28,7 +28,7 @@ description = "Salmon quantification (alignment mode) of the STAR toTranscriptom
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
     "{config.gtf}",
-    "{config.transcript_fasta}",
+    "{config.out_dir}/reference/transcripts.fa",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/{sample}/quant.sf",
@@ -75,7 +75,7 @@ description = "Salmon quantification (alignment mode) of the query-grouped Bowti
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.bam",
     "{config.gtf}",
-    "{config.transcript_fasta}",
+    "{config.out_dir}/reference/transcripts.fa",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/{sample}/quant.sf",
@@ -676,7 +676,7 @@ description = "Salmon quantification (alignment mode) of the UMI-deduped toTrans
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.filtered.bam",
     "{config.gtf}",
-    "{config.transcript_fasta}",
+    "{config.out_dir}/reference/transcripts.fa",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/{sample}/quant.sf",
@@ -1082,7 +1082,7 @@ conda = "envs/deseq2.yaml"
 name = "salmon_index"
 description = "Build Salmon index with decoys from the genome FASTA (nf-core SALMON_INDEX, or symlink a user-supplied index)"
 input = [
-    "{config.transcript_fasta}",
+    "{config.out_dir}/reference/transcripts.fa",
     "{config.fasta}",
 ]
 output = ["{config.out_dir}/reference/salmon_index"]
@@ -1126,7 +1126,7 @@ conda = "envs/salmon.yaml"
 [[rules]]
 name = "kallisto_index"
 description = "Build Kallisto index from the transcript FASTA (nf-core KALLISTO_INDEX, -k from pseudo_aligner_kmer_size, or symlink a user-supplied index)"
-input = ["{config.transcript_fasta}"]
+input = ["{config.out_dir}/reference/transcripts.fa"]
 output = ["{config.out_dir}/reference/kallisto"]
 shell = """
 set -euo pipefail

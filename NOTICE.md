@@ -35,6 +35,9 @@ Copied files that retain upstream MIT headers and attribution:
   (modules/nf-core/custom/multiqccustombiotype/templates/mqc_features_stat.py)
 - scripts/dupradar.r — from modules/nf-core/dupradar/templates/dupradar.r
   (MIT)
+- scripts/gtf2bed.pl — from modules/nf-core/ea-utils/gtf2bed/templates/gtf2bed.pl
+  (MIT, Copyright (c) 2011 Erik Aronesty); template variables replaced by
+  command-line arguments (ARGV[0] = GTF, ARGV[1] = output prefix)
 - assets/multiqc/* — from subworkflows/local/multiqc_rnaseq/assets/*
   (multiqc_config.yml, biotypes_header.txt, sample_status_header.txt,
   strand_check_summary.yaml, strand_check_composition.yaml)

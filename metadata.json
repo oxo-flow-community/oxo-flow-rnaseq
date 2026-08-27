@@ -53,6 +53,7 @@
     "bowtie2_align_sortmerna",
     "bowtie2_index",
     "bowtie2_rrna_index",
+    "chrom_sizes",
     "deseq2_qc",
     "deseq2_qc_pseudo",
     "deseq2_qc_rsem",
@@ -67,6 +68,7 @@
     "fq_lint_rrna_bowtie2",
     "fq_lint_rrna_sortmerna",
     "fq_lint_trimmed",
+    "gene_bed",
     "genomecov_combined",
     "genomecov_fw",
     "genomecov_rev",
@@ -146,6 +148,7 @@
     "summarizedexperiment",
     "summarizedexperiment_pseudo",
     "summarizedexperiment_rsem",
+    "transcript_fasta",
     "trimgalore",
     "trimgalore_umi",
     "tx2gene",
@@ -158,15 +161,13 @@
     "umitools_prepareforrsem"
   ],
   "excluded": [
-    "RSEM as_quantification mode — rsem-calculate-expression runs in --alignments mode (the upstream default quant_method); a mode-level rewrite of the whole quantification branch, not a composable branch",
-    "PREPARE_GENOME reference-artifact prep — fasta/gtf/transcript_fasta/gene_bed/chrom_sizes are inputs; the branch index builders (STAR / HISAT2 / RSEM / Salmon / Bowtie2 / Kallisto) ARE ported as when-gated rules",
-    "per-sample min_trimmed_reads filtering — data-dependent per-sample state; only the MultiQC fail_trimmed table is produced",
+    "per-sample min_trimmed_reads filtering — data-dependent per-sample state (n of trimmed reads); only the MultiQC fail_trimmed table is produced",
     "cat_fastq — only active for samples with more than one fastq pair; not expressible in the port's one-pair-per-sample sample model",
     "auto strandedness (per-sample inference from the samplesheet) — pipeline-level config.strandedness with forward/reverse/unstranded values only; the inferred per-sample value has no consumer in a static DAG",
-    "DESeq2 QC sample-name group decomposition (Group columns for PCA-by-group plots) — coldata is the sample IDs only",
+    "PREPARE_GENOME GTF preprocessing chain — CUSTOM_GTFFILTER (GTF filtered to the genome's sequence names), gffread GFF->GTF, additional_fasta (CUSTOM_CATADDITIONALFASTA), GENCODE preprocessing and .gz/.tar.gz reference handling; the gene_bed / chrom_sizes / transcript_fasta derivations ARE ported as prepare_genome::* builder rules (empty config key = derived from fasta + gtf like upstream)",
     "workflow_summary_mqc.yaml / methods_description_mqc.yaml — Nextflow-param-rendered MultiQC sections"
   ],
-  "rule_count": 132,
+  "rule_count": 135,
   "tools": [
     "fastqc",
     "trim-galore",
@@ -206,7 +207,8 @@
     "bioconductor-biocparallel",
     "bioconductor-tximport",
     "bioconductor-complexheatmap",
-    "multiqc"
+    "multiqc",
+    "perl"
   ],
   "description": "End-to-end bulk RNA-seq analysis for paired-end reads: fq lint and FastQC raw-read QC, TrimGalore adapter/quality trimming (including the UMI-extraction path), STAR, HISAT2 and Bowtie2-transcriptome (bowtie2_salmon) alignment with the BBSplit / SortMeRNA / Bowtie2 rRNA-filtered read variants, Picard MarkDuplicates or UMI-tools / UMICollapse dedup (genome and transcriptome chains), Salmon quantification in alignment mode (STAR and Bowtie2 orig_bams, raw and UMI-prepared) and pseudo-alignment mode (Salmon or Kallisto), RSEM alignment-mode quantification with per-sample results and merged count tables, tximport-merged gene/transcript count tables with SummarizedExperiment R objects, StringTie reference-guided assembly and quantification, featureCounts gene counts with biotype tables, RSeQC / dupRadar / Qualimap QC, DESeq2 sample-level QC (PCA, sample distances, size factors) per quantification branch, strand-specific bigWig tracks, and one final MultiQC report with the nf-core/rnaseq custom content (fail_trimmed / fail_mapped tables, strandedness checks, software versions). A faithful port of the nf-core/rnaseq 3.26.0 default star_salmon path plus the star_rsem, hisat2, bowtie2_salmon, with_umi, salmon-pseudo and kallisto-pseudo branches — same tools, same versions, same commands.",
   "installation": {
@@ -216,9 +218,9 @@
       "paired-end FASTQ reads: reads_dir/<sample>_R1.fastq.gz + _R2.fastq.gz, cohort declared in [[sample_groups]]",
       "reference genome FASTA (uncompressed)",
       "gene annotation GTF",
-      "transcriptome FASTA (Salmon alignment-mode quant + StringTie)",
-      "12-column gene BED (RSeQC input)",
-      "UCSC chrom.sizes file",
+      "transcriptome FASTA (Salmon alignment-mode quant + the bowtie2/salmon/kallisto index builders); empty config key = derived from fasta + gtf by prepare_genome::transcript_fasta (RSEM)",
+      "12-column gene BED (RSeQC input); empty config key = derived from the GTF by prepare_genome::gene_bed (ea-utils gtf2bed)",
+      "UCSC chrom.sizes file; empty config key = derived from the fasta by prepare_genome::chrom_sizes (samtools faidx)",
       "branch indexes (STAR / HISAT2 / RSEM / Salmon / Bowtie2 / Kallisto) are auto-built by when-gated builder rules from the shipped fixtures when the config key is empty; for real data set config.star_index / hisat2_index / rsem_index / salmon_index / bowtie2_index / kallisto_index to your own index directories",
       "compute: up to 12 CPUs / 200 GB per rule (UMI dedup); STAR align 12 CPUs / 72 GB; most rules run on 6 CPUs / 36 GB or 1 CPU / 6 GB",
       "conda or mamba to create the pinned per-rule environments (envs/)"

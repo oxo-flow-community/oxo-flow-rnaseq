@@ -1,0 +1,103 @@
+[workflow]
+name = "prepare_genome"
+description = "Reference derivations: gene BED (ea-utils gtf2bed), chrom.sizes (samtools faidx) and transcript FASTA (RSEM preparereference), with symlink short-circuits for user-supplied paths"
+
+# ---------------------------------------------------------------------------
+# PREPARE_GENOME derivations (upstream subworkflows/local/prepare_genome).
+# When the corresponding config key is empty, the reference artifact is
+# derived from the genome + GTF exactly like upstream; a user-supplied path
+# is symlinked in instead (established index-builder pattern). Outputs land
+# at canonical paths under {config.out_dir}/reference/ that downstream
+# consumers reference. NOTE: the symlink target is resolved to an absolute
+# path in-shell — {config.*} renders verbatim (a relative fixture path would
+# otherwise produce a broken link, unlike {input[i]} which renders absolute).
+# ---------------------------------------------------------------------------
+
+# EAUTILS_GTF2BED (modules/nf-core/ea-utils/gtf2bed): perl gtf2bed.pl <gtf>
+# <prefix> -> <prefix>.bed. Upstream runs it without ext.args (no -x), so the
+# 12-column BED carries transcript ids; runs on any non-prokaryotic GTF
+# (prokaryotic CDS-only annotations are excluded, see README).
+[[rules]]
+name = "gene_bed"
+description = "Derive the 12-column gene BED from the GTF with ea-utils gtf2bed (nf-core EAUTILS_GTF2BED, or symlink a user-supplied gene_bed)"
+input = ["{config.gtf}"]
+output = ["{config.out_dir}/reference/gene.bed"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+if [ -n "{config.gene_bed}" ]; then
+    GENE_BED=$(cd "$(dirname {config.gene_bed})" && pwd)/$(basename {config.gene_bed})
+    ln -s "$GENE_BED" {config.out_dir}/reference/gene.bed
+    exit 0
+fi
+perl scripts/gtf2bed.pl {input[0]} {config.out_dir}/reference/gene
+"""
+when = "!config.skip_qc"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/gtf2bed.yaml"
+
+# SAMTOOLS_FAIDX (modules/nf-core/samtools/faidx): samtools faidx <fasta>
+# then cut -f 1,2 <fasta>.fai > <fasta>.sizes (the .sizes emit). The fasta is
+# staged into a scratch dir so the .fai sidecar never lands next to the
+# source file.
+[[rules]]
+name = "chrom_sizes"
+description = "Derive UCSC chrom.sizes from the genome FASTA with samtools faidx (nf-core SAMTOOLS_FAIDX, or symlink a user-supplied chrom_sizes)"
+input = ["{config.fasta}"]
+output = ["{config.out_dir}/reference/chrom_sizes.txt"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+if [ -n "{config.chrom_sizes}" ]; then
+    CHROM_SIZES=$(cd "$(dirname {config.chrom_sizes})" && pwd)/$(basename {config.chrom_sizes})
+    ln -s "$CHROM_SIZES" {config.out_dir}/reference/chrom_sizes.txt
+    exit 0
+fi
+mkdir chrom_sizes_wd
+ln -s {input[0]} chrom_sizes_wd/genome.fa
+samtools faidx chrom_sizes_wd/genome.fa
+cut -f 1,2 chrom_sizes_wd/genome.fa.fai > {config.out_dir}/reference/chrom_sizes.txt
+"""
+when = "!config.skip_bigwig"
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+# RSEM_PREPAREREFERENCE (modules/nf-core/rsem/preparereference):
+# rsem-prepare-reference --gtf <gtf> --num-threads <cpus> <fasta> rsem/genome
+# then cp rsem/genome.transcripts.fa . (the transcript_fasta emit). Salmon
+# alignment-mode quant, the pseudo-alignment indexes and the bowtie2_salmon
+# transcriptome index all consume the transcript FASTA; the when below is the
+# union of those consumer branches (star_rsem uses the RSEM index, whose
+# transcriptome is built by the rsem_index rule instead).
+[[rules]]
+name = "transcript_fasta"
+description = "Derive the transcript FASTA from the genome + GTF with RSEM (nf-core RSEM_PREPAREREFERENCE transcript_fasta emit, or symlink a user-supplied transcript_fasta)"
+input = [
+    "{config.fasta}",
+    "{config.gtf}",
+]
+output = ["{config.out_dir}/reference/transcripts.fa"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+if [ -n "{config.transcript_fasta}" ]; then
+    TRANSCRIPT_FASTA=$(cd "$(dirname {config.transcript_fasta})" && pwd)/$(basename {config.transcript_fasta})
+    ln -s "$TRANSCRIPT_FASTA" {config.out_dir}/reference/transcripts.fa
+    exit 0
+fi
+mkdir rsem_tf
+rsem-prepare-reference --gtf {input[1]} --num-threads {effective_threads} {input[0]} rsem_tf/genome
+cp rsem_tf/genome.transcripts.fa {config.out_dir}/reference/transcripts.fa
+"""
+when = "((config.aligner == 'star_salmon' || config.aligner == 'bowtie2_salmon') && !config.skip_alignment) || ((config.pseudo_aligner == 'salmon' || config.pseudo_aligner == 'kallisto') && !config.skip_pseudo_alignment)"
+[rules.resources]
+threads = 4
+memory = "12G"
+[rules.environment]
+conda = "envs/rsem.yaml"

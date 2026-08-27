@@ -100,7 +100,7 @@ description = "Infer library strandedness with RSeQC (nf-core RSEQC_INFEREXPERIM
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
-    "{config.gene_bed}",
+    "{config.out_dir}/reference/gene.bed",
 ]
 output = ["{config.out_dir}/{config.aligner}/rseqc/infer_experiment/{sample}.infer_experiment.txt"]
 shell = """
@@ -122,7 +122,7 @@ description = "Insert-size distribution with RSeQC (nf-core RSEQC_INNERDISTANCE)
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
-    "{config.gene_bed}",
+    "{config.out_dir}/reference/gene.bed",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/{sample}.inner_distance.txt",
@@ -158,7 +158,7 @@ description = "Annotate splicing junctions with RSeQC (nf-core RSEQC_JUNCTIONANN
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
-    "{config.gene_bed}",
+    "{config.out_dir}/reference/gene.bed",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/bed/{sample}.junction.bed",
@@ -195,7 +195,7 @@ description = "Junction saturation with RSeQC (nf-core RSEQC_JUNCTIONSATURATION)
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
-    "{config.gene_bed}",
+    "{config.out_dir}/reference/gene.bed",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/rseqc/junction_saturation/pdf/{sample}.junctionSaturation_plot.pdf",
@@ -226,7 +226,7 @@ description = "Read distribution across gene features with RSeQC (nf-core RSEQC_
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam.bai",
-    "{config.gene_bed}",
+    "{config.out_dir}/reference/gene.bed",
 ]
 output = ["{config.out_dir}/{config.aligner}/rseqc/read_distribution/{sample}.read_distribution.txt"]
 shell = """

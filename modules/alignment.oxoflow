@@ -349,7 +349,7 @@ conda = "envs/hisat2.yaml"
 [[rules]]
 name = "bowtie2_index"
 description = "Build Bowtie2 index from the transcript FASTA (nf-core BOWTIE2_BUILD, or symlink a user-supplied index)"
-input = ["{config.transcript_fasta}"]
+input = ["{config.out_dir}/reference/transcripts.fa"]
 output = ["{config.out_dir}/reference/bowtie2_index"]
 shell = """
 set -euo pipefail
