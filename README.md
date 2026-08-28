@@ -68,7 +68,7 @@ corresponding `config.<tool>_index` key is empty. For real data, set
 `config.salmon_index` / `config.bowtie2_index` / `config.kallisto_index` to
 your own index directories (they are symlinked in instead of rebuilt).
 
-**Reads:** `reads_dir/<sample>_R1.fastq.gz` and `reads_dir/<sample>_R2.fastq.gz`
+**Reads:** `reads_dir/<sample>_R1.fastq.gz` and `reads_dir/<sample>_R2.fastq.gz` (one pair per sample). Multi-pair samples add lane-style suffixes: `reads_dir/<sample>_R1_001.fastq.gz`, `<sample>_R2_001.fastq.gz`, ... — every file matching `<sample>_R{read}*.fastq.gz` is concatenated per mate by `fastq_qc::cat_reads` into `results/read_merging/<sample>_1/2.merged.fastq.gz` in sorted order, exactly like upstream CAT_FASTQ (single-pair samples pass through byte-identically).
 (paired-end only). The sample cohort is declared in `[[sample_groups]]`.
 
 The repository ships tiny synthetic fixtures for all of the above
@@ -138,7 +138,8 @@ the upstream defaults:
 |---|---|---|---|
 | `out_dir` | `--outdir` | `results` | |
 | `reads_dir` | (samplesheet) | `test/fixtures/raw` | input FASTQs |
-| `strandedness` | samplesheet column | `unstranded` | `forward` / `reverse` / `unstranded`; `auto` not ported (pipeline-level setting) |
+| `metadata_file` | (samplesheet) | (empty) | optional TSV: first column = sample id, additional columns become per-sample `{meta.<column>}` values; the `strandedness` column is consumed by every strandedness branch (see "Per-sample strandedness" below) |
+| `strandedness` | samplesheet column | `unstranded` | pipeline-level default; overridden per sample by a `metadata_file` `strandedness` column (`forward` / `reverse` / `unstranded`); `auto` and empty cells fall back to this key |
 | `aligner` | `--aligner` | `star_salmon` | `star_salmon` (default), `star_rsem`, `hisat2`, `bowtie2_salmon` are ported; downstream paths follow `results/<aligner>/` like upstream |
 | `pseudo_aligner` | `--pseudo_aligner` | (empty) | empty = alignment-mode Salmon only; `salmon` / `kallisto` ported (see fidelity rows 24-27) |
 | `bowtie2_index` | `--bowtie2_index` | (empty) | empty = built from `transcript_fasta` by the `bowtie2_index` builder when the branch is enabled; a user-supplied path is symlinked in |
@@ -146,7 +147,12 @@ the upstream defaults:
 | `pseudo_aligner_kmer_size` | `--pseudo_aligner_kmer_size` | `31` | `kallisto index -k` (upstream default) |
 | `gene_bed` | `--gene_bed` | `test/fixtures/reference/gene.bed` | 12-column BED for RSeQC; empty = derived from the GTF by `prepare_genome::gene_bed` (ea-utils gtf2bed) |
 | `chrom_sizes` | `--chrom_sizes` | `test/fixtures/reference/chrom_sizes.txt` | UCSC chrom.sizes for the bigWig rules; empty = derived from the fasta by `prepare_genome::chrom_sizes` (`samtools faidx`) |
-| `transcript_fasta` | `--transcript_fasta` | `test/fixtures/reference/transcripts.fa` | Salmon alignment-mode quant + the bowtie2 / salmon / kallisto index builders; empty = derived from fasta + gtf by `prepare_genome::transcript_fasta` (RSEM) |
+| `transcript_fasta` | `--transcript_fasta` | `test/fixtures/reference/transcripts.fa` | Salmon alignment-mode quant + the bowtie2 / salmon / kallisto index builders; empty = derived from fasta + gtf by `prepare_genome::transcript_fasta` (RSEM); plain or `.gz` paths accepted; with `gencode=true` the header `|`-joined identifiers are truncated (`cut -d '|' -f1`, upstream PREPROCESS_TRANSCRIPTS_FASTA_GENCODE) |
+| `gff` | `--gff` | (empty) | annotation in GFF3 format; set instead of `gtf` — converted to GTF by `prepare_genome::gffread_gtf` (gffread `--keep-exon-attrs -F -T`, plain or `.gz`) |
+| `additional_fasta` | `--additional_fasta` | (empty) | extra genome sequences (e.g. ERCC spike-ins): concatenated onto the genome and appended to the GTF as transgenes (fasta2gtf.py, biotype from `featurecounts_group_type` — or `gene_type` when `gencode=true`), like upstream CUSTOM_CATADDITIONALFASTA; plain or `.gz` |
+| `skip_gtf_filter` | `--skip_gtf_filter` | `false` | skip CUSTOM_GTFFILTER (GTF filtered to the genome's sequence names; runs when the upstream `filter_gtf_needed` gate holds) |
+| `skip_gtf_transcript_filter` | `--skip_gtf_transcript_filter` | `false` | keep GTF lines without a `transcript_id` (gtffilter.py `--skip_transcript_id_check`) |
+| `gencode` | (GENCODE genome config) | `false` | GENCODE reference genomes: `gene_type` group feature + transcript-FASTA header truncation (see above) |
 | `salmon_quant_libtype` | `--salmon_quant_libtype` | (empty) | empty = derive from `strandedness` (forward → ISF, reverse → ISR, else IU); set e.g. `A` for auto-detection |
 | `min_trimmed_reads` | `--min_trimmed_reads` | `10000` | used for the MultiQC fail_trimmed table only (per-sample drop filter not ported) |
 | `min_mapped_reads` | `--min_mapped_reads` | `5` | MultiQC fail_mapped table |
@@ -167,11 +173,49 @@ the upstream defaults:
 | `deseq2_vst` | `--deseq2_vst` | `true` | variance stabilizing transformation for DESeq2 QC |
 | `save_trimmed` / `save_align_intermeds` | `--save_trimmed` / `--save_align_intermeds` | `false` | accepted for parity; trimmed FASTQs and intermediate BAMs are kept at results/ paths regardless |
 
+### Per-sample strandedness
+
+Set `metadata_file` to a TSV whose first column is the sample id and whose
+`strandedness` column carries per-sample values:
+
+```
+sample    strandedness
+S1        forward
+S2        unstranded
+```
+
+Every strandedness consumer (HISAT2 `--rna-strandness`, featureCounts `-s`,
+dupRadar, Qualimap, Salmon `libType`, StringTie `--fr/--rf`, RSEM, kallisto,
+bigWig FW/REV gating) resolves `STRANDEDNESS` per sample instance from this
+column. A missing row/column renders an empty value and warns at plan time,
+then falls back to `config.strandedness` — exactly today's behavior for runs
+without a `metadata_file`. `bigwig_fw` / `bigwig_rev` run only for
+`forward` / `reverse` samples (plan-time pruning); `auto` also falls back to
+the config value (no Salmon `--libType A` inference run).
+
+### Reference chain
+
+`prepare_genome::*` canonicalizes the reference inputs once per run into
+`results/reference/`:
+
+```
+gtf.gtf (or gffread GFF->GTF) --> gtf.filtered.gtf (CUSTOM_GTFFILTER, gated) --> gtf.processed.gtf (+ transgenes)
+genome.fa (gunzipped, + additional_fasta)
+transcripts.fa (RSEM-derived or preprocessed user copy)
+```
+
+All downstream rules consume the canonical artifacts, so `.gz` inputs and
+`additional_fasta` work transparently. The STAR index (`star_index`) is a
+`[[references]]` builder that keeps the raw fixture paths (references build
+before the rule DAG).
+
 ### Outputs
 
 `results/` mirrors the upstream `outdir/` layout under `results/<aligner>/`
 (aligner = `star_salmon`):
 
+- `read_merging/` — `<id>_1.merged.fastq.gz` / `<id>_2.merged.fastq.gz` (CAT_FASTQ)
+- `reference/` — canonical `gtf.gtf`, `gtf.filtered.gtf`, `gtf.processed.gtf`, `genome.fa`, `transcripts.fa` (reference chain)
 - `fastqc/raw/`, `fastqc/trim/` — FastQC HTML + zip for raw and trimmed reads
 - `fq_lint/raw/`, `fq_lint/trimmed/` — fq lint reports
 - `trimgalore/` — trimmed FASTQs and trimming reports
@@ -240,8 +284,8 @@ Known, documented deviations:
 
 | # | upstream (3.26.0) | port | reason |
 |---|---|---|---|
-| 1 | Per-sample strandedness from the samplesheet (`auto` supported) | Pipeline-level `config.strandedness`, three explicit values only | oxo-flow has one config per run; `auto` needs a Salmon inference branch |
-| 2 | `PREPARE_GENOME` derives the reference artifacts (gene_bed via EAUTILS_GTF2BED, chrom_sizes via SAMTOOLS_FAIDX, transcript_fasta via RSEM_PREPAREREFERENCE) and builds the branch indexes (STAR / HISAT2 / RSEM / Salmon) | The artifact derivations are ported as `prepare_genome::gene_bed` / `chrom_sizes` / `transcript_fasta` builder rules (empty config key = derive from fasta + gtf like upstream; non-empty key = the user path is symlinked in); the index builders: STAR via the `[[references]]` builder, HISAT2 / RSEM / Salmon / Bowtie2 / Kallisto via when-gated builder rules | The GTF preprocessing chain (CUSTOM_GTFFILTER, gffread GFF→GTF, additional_fasta, GENCODE preprocessing, .gz/.tar.gz reference handling) stays excluded; fasta and gtf remain required inputs |
+| 1 | Per-sample strandedness from the samplesheet (`auto` supported) | Ported via a `metadata_file` `strandedness` column: `forward` / `reverse` / `unstranded` resolve per sample, empty / `auto` / missing cells fall back to `config.strandedness`, bigWig FW/REV rules prune per sample at plan time | `auto` resolves to the pipeline-level value instead of a Salmon `--libType A` inference run; runs without a `metadata_file` keep the previous single-config behavior |
+| 2 | `PREPARE_GENOME` derives the reference artifacts (gene_bed via EAUTILS_GTF2BED, chrom_sizes via SAMTOOLS_FAIDX, transcript_fasta via RSEM_PREPAREREFERENCE) and builds the branch indexes (STAR / HISAT2 / RSEM / Salmon) | The artifact derivations are ported as `prepare_genome::gene_bed` / `chrom_sizes` / `transcript_fasta` builder rules (empty config key = derive from fasta + gtf like upstream; non-empty key = the user path is symlinked in); the index builders: STAR via the `[[references]]` builder, HISAT2 / RSEM / Salmon / Bowtie2 / Kallisto via when-gated builder rules | The GTF preprocessing chain is ported (CUSTOM_GTFFILTER with the upstream `filter_gtf_needed` gate, gffread GFF→GTF, additional_fasta transgenes, GENCODE preprocessing, `.gz` references — see `modules/prepare_genome.oxoflow`); fasta and gtf remain required inputs; `.tar.gz` index bundles (bbsplit / sortmerna) stay excluded |
 | 3 | Non-default branches: `star_rsem`, `hisat2`, `bowtie2_salmon`, `--with_umi`, `--pseudo_aligner salmon`, `--pseudo_aligner kallisto` | Ported — see rows 16-27 for their deviations | RSEM runs in `--alignments` mode in every RSEM path, exactly like upstream (the nf-core `as_quantification` mode never existed in the rnaseq pipeline) |
 | 4 | SALMON_QUANT (alignment mode) + CUSTOM_TX2GENE + TXIMETA_TXIMPORT + SUMMARIZEDEXPERIMENT_* — the default-path quantification chain | Ported as `quantification::salmon_quant` / `tx2gene` / `tximport` / `summarizedexperiment` | The upstream 4-process chain is mirrored as 4 rules; tx2gene runs on the first sample's quant dir (upstream `.first()`); the SE process runs twice (gene + transcript) inside one rule with the upstream `--assay_names` values |
 | 5 | `min_trimmed_reads` gate drops failing samples from the downstream chain | Only the MultiQC fail_trimmed table is produced | The filter is data-dependent per-sample state (n of trimmed reads), not expressible as a static DAG |
@@ -254,7 +298,7 @@ Known, documented deviations:
 | 12 | `CUSTOM_MULTIQCCUSTOMBIOTYPE` supports `--max_biotypes` via `ext.args` | Fixed at the upstream default `100` | The upstream pipeline never sets it |
 | 13 | STRINGTIE_STRINGTIE (default path, runs on the markdup BAM with `-G gtf -e`) | Ported as `quantification::stringtie` (`--fr`/`--rf` from strandedness like upstream) | The `<id>.ballgown/` directory is moved into `results/` but is not declared as a rule output (upstream emits it) |
 | 14 | DESEQ2_QC (default path, runs on `salmon.merged.gene_counts_length_scaled.tsv` with `--id_col 1 --sample_suffix '' --count_col 3`, `--vst TRUE` by default) | Ported as `quantification::deseq2_qc` with the upstream header sed (label `star_salmon`); the port script is byte-identical to upstream `bin/deseq2_qc.r` and the three args equal the script's defaults (upstream `conf/modules/deseq2_qc.config` passes them explicitly) | Blind design (`design=~1`, as upstream), with the upstream sample-name group decomposition (Group1/Group2 coldata columns split on `_` when the sample names decompose consistently) live in the byte-identical script; the `star_salmon.*_mqc.tsv` tables are kept in `results/` (upstream feeds them to MultiQC without publishing). Like `skip_qc` for the other QC files, `skip_deseq2_qc=true` / `skip_quantification_merge=true` leave the MultiQC rule's DESeq2 inputs missing — use the defaults |
-| 15 | UMI extraction (`umitools`), BBSplit, SortMeRNA/Bowtie2 rRNA removal | Ported as when-gated rules (off by default, same gates as upstream: `with_umi` / `!skip_bbsplit` / `remove_ribo_rna` + `ribo_removal_tool`) | The four trimmed-read variants each feed the aligners, quantification and MultiQC exactly like upstream; `cat_fastq` (multi-fastq-sample branch) remains excluded |
+| 15 | UMI extraction (`umitools`), BBSplit, SortMeRNA/Bowtie2 rRNA removal | Ported as when-gated rules (off by default, same gates as upstream: `with_umi` / `!skip_bbsplit` / `remove_ribo_rna` + `ribo_removal_tool`) | The four trimmed-read variants each feed the aligners, quantification and MultiQC exactly like upstream; `cat_fastq` multi-pair read merging is ported as `fastq_qc::cat_reads` (input_groups, single-pair samples pass through byte-identically) |
 | 16 | UMI transcriptome intermediates are unpublished Nextflow work-dir files (`{id}.bam`, `{id}.sorted.bam`, `{id}.filtered.bam` from `bam_dedup_umi`'s SAMTOOLS_SORT / UMITOOLS_PREPAREFORRSEM) | Stable canonical names: `{sample}.transcriptome.sorted.bam` → `{sample}.umi_dedup.transcriptome.sorted.bam` → `{sample}.umi_dedup.transcriptome.bam` → `{sample}.umi_dedup.transcriptome.filtered.bam` | oxo-flow has no work dirs; every intermediate is a declared output. Published names are unchanged upstream (logs, stats, prepared BAM) |
 | 17 | UMI dedup outputs are tool-specific upstream (`{prefix}.dedup.bam` from UMITOOLS_DEDUP, `{prefix}.UMICollapse.bam` from UMICOLLAPSE) | All four umitools variants and the umicollapse variant write the shared path `{sample}.markdup.sorted.bam` (exclusive when-gates; downstream rules resolve one path) | Duplicate-output exclusive-gate idiom — same published artifact set per config; the `.log` / `_UMICollapse.log` logs keep their tool-specific names |
 | 18 | Transcriptome-side BAM stats (`samtools_stats` for `{prefix}.umi_dedup.transcriptome.sorted.bam`) | Only the dedup-side stats are ported (`{aligner}/samtools_stats/{sample}.umi_dedup.transcriptome.sorted.bam.{stats,flagstat,idxstats}`); the coordinate-sorted index + sort-side stats are not | Sort-side stats and the index are unpublished upstream unless `--save_umi_intermeds`; dedup-side stats publish unconditionally. MultiQC excludes the transcriptome stats upstream too (`bam_dedup_umi` never mixes them into `multiqc_files`) — the port mirrors that |
@@ -271,15 +315,13 @@ Known, documented deviations:
 ## Not ported (metadata `excluded`)
 
 Per-sample `min_trimmed_reads` filtering (data-dependent per-sample state;
-only the MultiQC fail_trimmed table is produced); `cat_fastq` (only active
-for samples with more than one fastq pair — not expressible in the port's
-one-pair-per-sample sample model); `auto` strandedness (per-sample inference
-from the samplesheet — the inferred per-sample value has no consumer in a
-static DAG); the GTF preprocessing chain of `PREPARE_GENOME` (CUSTOM_GTFFILTER,
-gffread GFF→GTF, additional_fasta, GENCODE preprocessing, .gz/.tar.gz
-reference handling — the gene_bed / chrom_sizes / transcript_fasta
-derivations ARE ported, see row 2); the Nextflow-param-rendered MultiQC
-sections (`workflow_summary_mqc.yaml` / `methods_description_mqc.yaml`).
+only the MultiQC fail_trimmed table is produced); `auto` strandedness
+inference without a metadata_file column (with the column, `auto` / empty
+values fall back to `config.strandedness` — no Salmon `--libType A`
+inference run); `.tar.gz` reference bundles for the bbsplit / sortmerna
+indexes (gtf, gff, fasta, additional_fasta and transcript_fasta accept plain
+or `.gz` paths like upstream); the Nextflow-param-rendered MultiQC sections
+(`workflow_summary_mqc.yaml` / `methods_description_mqc.yaml`).
 
 ## Test
 

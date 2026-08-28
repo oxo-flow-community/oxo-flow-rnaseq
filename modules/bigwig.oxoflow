@@ -28,7 +28,7 @@ output = ["{config.out_dir}/{config.aligner}/{sample}.forward.bedGraph"]
 shell = """
 bedtools genomecov -ibam {input[0]} -split -du -strand + -bg | LC_ALL=C sort --parallel=1 --buffer-size=3G -k1,1 -k2,2n > {output[0]}
 """
-when = '!config.skip_bigwig && (config.strandedness == "forward" || config.strandedness == "reverse")'
+when = '!config.skip_bigwig && ({meta.strandedness} == "forward" || {meta.strandedness} == "reverse" || (({meta.strandedness} == "" || {meta.strandedness} == "auto") && (config.strandedness == "forward" || config.strandedness == "reverse")))'
 [rules.resources]
 threads = 1
 memory = "6G"
@@ -43,7 +43,7 @@ output = ["{config.out_dir}/{config.aligner}/{sample}.reverse.bedGraph"]
 shell = """
 bedtools genomecov -ibam {input[0]} -split -du -strand - -bg | LC_ALL=C sort --parallel=1 --buffer-size=3G -k1,1 -k2,2n > {output[0]}
 """
-when = '!config.skip_bigwig && (config.strandedness == "forward" || config.strandedness == "reverse")'
+when = '!config.skip_bigwig && ({meta.strandedness} == "forward" || {meta.strandedness} == "reverse" || (({meta.strandedness} == "" || {meta.strandedness} == "auto") && (config.strandedness == "forward" || config.strandedness == "reverse")))'
 [rules.resources]
 threads = 1
 memory = "6G"
@@ -74,7 +74,7 @@ output = ["{config.out_dir}/{config.aligner}/{sample}.clip.forward.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
 """
-when = '!config.skip_bigwig && (config.strandedness == "forward" || config.strandedness == "reverse")'
+when = '!config.skip_bigwig && ({meta.strandedness} == "forward" || {meta.strandedness} == "reverse" || (({meta.strandedness} == "" || {meta.strandedness} == "auto") && (config.strandedness == "forward" || config.strandedness == "reverse")))'
 [rules.resources]
 threads = 6
 memory = "36G"
@@ -89,7 +89,7 @@ output = ["{config.out_dir}/{config.aligner}/{sample}.clip.reverse.bedGraph"]
 shell = """
 bedClip {input[0]} {input[1]} {output[0]}
 """
-when = '!config.skip_bigwig && (config.strandedness == "forward" || config.strandedness == "reverse")'
+when = '!config.skip_bigwig && ({meta.strandedness} == "forward" || {meta.strandedness} == "reverse" || (({meta.strandedness} == "" || {meta.strandedness} == "auto") && (config.strandedness == "forward" || config.strandedness == "reverse")))'
 [rules.resources]
 threads = 6
 memory = "36G"
@@ -120,7 +120,7 @@ output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.forward.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}
 """
-when = '!config.skip_bigwig && (config.strandedness == "forward" || config.strandedness == "reverse")'
+when = '!config.skip_bigwig && ({meta.strandedness} == "forward" || {meta.strandedness} == "reverse" || (({meta.strandedness} == "" || {meta.strandedness} == "auto") && (config.strandedness == "forward" || config.strandedness == "reverse")))'
 [rules.resources]
 threads = 1
 memory = "6G"
@@ -135,7 +135,7 @@ output = ["{config.out_dir}/{config.aligner}/bigwig/{sample}.reverse.bigWig"]
 shell = """
 bedGraphToBigWig {input[0]} {input[1]} {output[0]}
 """
-when = '!config.skip_bigwig && (config.strandedness == "forward" || config.strandedness == "reverse")'
+when = '!config.skip_bigwig && ({meta.strandedness} == "forward" || {meta.strandedness} == "reverse" || (({meta.strandedness} == "" || {meta.strandedness} == "auto") && (config.strandedness == "forward" || config.strandedness == "reverse")))'
 [rules.resources]
 threads = 1
 memory = "6G"

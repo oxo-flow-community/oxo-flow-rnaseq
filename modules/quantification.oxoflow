@@ -27,7 +27,7 @@ name = "salmon_quant"
 description = "Salmon quantification (alignment mode) of the STAR toTranscriptome BAM (nf-core SALMON_QUANT, --geneMap gtf, --libType from strandedness)"
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
     "{config.out_dir}/reference/transcripts.fa",
 ]
 output = [
@@ -36,7 +36,9 @@ output = [
     "{config.out_dir}/{config.aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) LIBTYPE=ISF ;;
     reverse) LIBTYPE=ISR ;;
     *) LIBTYPE=IU ;;
@@ -74,7 +76,7 @@ name = "salmon_quant_bowtie2"
 description = "Salmon quantification (alignment mode) of the query-grouped Bowtie2 BAM (nf-core SALMON_QUANT, bowtie2_salmon path)"
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.bam",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
     "{config.out_dir}/reference/transcripts.fa",
 ]
 output = [
@@ -83,7 +85,9 @@ output = [
     "{config.out_dir}/{config.aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) LIBTYPE=ISF ;;
     reverse) LIBTYPE=ISR ;;
     *) LIBTYPE=IU ;;
@@ -116,7 +120,7 @@ conda = "envs/salmon.yaml"
 [[rules]]
 name = "tx2gene"
 description = "Build transcript-to-gene mapping from the GTF (nf-core CUSTOM_TX2GENE, gene_id/gene_name attributes, first sample's quant dir)"
-input = ["{config.gtf}"]
+input = ["{config.out_dir}/reference/gtf.processed.gtf"]
 output = [
     "{config.out_dir}/{config.aligner}/salmon.merged.tx2gene.tsv",
 ]
@@ -258,7 +262,7 @@ name = "stringtie"
 description = "StringTie reference-guided transcript assembly and quantification (nf-core STRINGTIE_STRINGTIE, -G gtf -e, --fr/--rf from strandedness)"
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/stringtie/{sample}.transcripts.gtf",
@@ -267,7 +271,9 @@ output = [
 ]
 when = "!config.skip_stringtie"
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) STRAND=--fr ;;
     reverse) STRAND=--rf ;;
     *) STRAND= ;;
@@ -376,7 +382,7 @@ description = "Coordinate sort of the STAR toTranscriptome BAM (nf-core BAM_SORT
 input = ["{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.sorted.bam"]
 shell = """
-samtools cat {input[0]} | samtools sort -T {sample}.transcriptome.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+samtools cat {input[0]} | samtools sort -T {sample}.transcriptome.sorted --threads 6 --reference {config.out_dir}/reference/genome.fa -o {output[0]} -
 """
 when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem')"
 [rules.resources]
@@ -395,7 +401,7 @@ description = "Coordinate sort of the Bowtie2 query-grouped BAM (nf-core BAM_SOR
 input = ["{config.out_dir}/{config.aligner}/{sample}.bam"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.transcriptome.sorted.bam"]
 shell = """
-samtools cat {input[0]} | samtools sort -T {sample}.transcriptome.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+samtools cat {input[0]} | samtools sort -T {sample}.transcriptome.sorted --threads 6 --reference {config.out_dir}/reference/genome.fa -o {output[0]} -
 """
 when = "config.with_umi && !config.skip_alignment && config.aligner == 'bowtie2_salmon'"
 [rules.resources]
@@ -581,7 +587,7 @@ description = "samtools stats on UMI-deduped transcriptome BAM (nf-core SAMTOOLS
 input = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam"]
 output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.transcriptome.sorted.bam.stats"]
 shell = """
-samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
+samtools stats --threads 1 --reference {config.out_dir}/reference/genome.fa {input[0]} > {output[0]}
 """
 when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem' || config.aligner == 'bowtie2_salmon')"
 [rules.resources]
@@ -632,7 +638,7 @@ description = "Name-sort the UMI-deduped transcriptome BAM (nf-core SAMTOOLS_SOR
 input = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.sorted.bam"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.bam"]
 shell = """
-samtools cat {input[0]} | samtools sort -n -T {sample}.umi_dedup.transcriptome --threads 6 --reference {config.fasta} -o {output[0]} -
+samtools cat {input[0]} | samtools sort -n -T {sample}.umi_dedup.transcriptome --threads 6 --reference {config.out_dir}/reference/genome.fa -o {output[0]} -
 """
 when = "config.with_umi && !config.skip_alignment && (config.aligner == 'star_salmon' || config.aligner == 'star_rsem' || config.aligner == 'bowtie2_salmon')"
 [rules.resources]
@@ -675,7 +681,7 @@ name = "salmon_quant_umi"
 description = "Salmon quantification (alignment mode) of the UMI-deduped toTranscriptome BAM (nf-core SALMON_QUANT, with_umi path)"
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.umi_dedup.transcriptome.filtered.bam",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
     "{config.out_dir}/reference/transcripts.fa",
 ]
 output = [
@@ -684,7 +690,9 @@ output = [
     "{config.out_dir}/{config.aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) LIBTYPE=ISF ;;
     reverse) LIBTYPE=ISR ;;
     *) LIBTYPE=IU ;;
@@ -720,8 +728,8 @@ conda = "envs/salmon.yaml"
 name = "rsem_index"
 description = "Build RSEM index with STAR-compatible transcriptome references (nf-core RSEM_PREPAREREFERENCE, or symlink a user-supplied index)"
 input = [
-    "{config.fasta}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/genome.fa",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = ["{config.out_dir}/reference/rsem_index"]
 shell = """
@@ -758,7 +766,9 @@ output = [
 shell = """
 set -euo pipefail
 INDEX=$(find -L {input[1]} -name "*.grp" | sed 's/\\.grp$//')
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) STRAND="--strandedness forward" ;;
     reverse) STRAND="--strandedness reverse" ;;
     *) STRAND= ;;
@@ -799,7 +809,9 @@ output = [
 shell = """
 set -euo pipefail
 INDEX=$(find -L {input[1]} -name "*.grp" | sed 's/\\.grp$//')
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) STRAND="--strandedness forward" ;;
     reverse) STRAND="--strandedness reverse" ;;
     *) STRAND= ;;
@@ -899,7 +911,7 @@ conda = "envs/rsem.yaml"
 [[rules]]
 name = "tx2gene_rsem"
 description = "Build transcript-to-gene mapping for RSEM (nf-core CUSTOM_TX2GENE, quant_type rsem, first sample's isoforms.results)"
-input = ["{config.gtf}"]
+input = ["{config.out_dir}/reference/gtf.processed.gtf"]
 output = [
     "{config.out_dir}/{config.aligner}/rsem.merged.tx2gene.tsv",
 ]
@@ -1083,7 +1095,7 @@ name = "salmon_index"
 description = "Build Salmon index with decoys from the genome FASTA (nf-core SALMON_INDEX, or symlink a user-supplied index)"
 input = [
     "{config.out_dir}/reference/transcripts.fa",
-    "{config.fasta}",
+    "{config.out_dir}/reference/genome.fa",
 ]
 output = ["{config.out_dir}/reference/salmon_index"]
 shell = """
@@ -1157,7 +1169,7 @@ input = [
     "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
     "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
     "{config.out_dir}/reference/kallisto",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/abundance.tsv",
@@ -1168,8 +1180,10 @@ output = [
 shell = """
 set -euo pipefail
 STRANDED=""
-if [ "{config.strandedness}" = "forward" ]; then STRANDED="--fr-stranded"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRANDED="--rf-stranded"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRANDED="--fr-stranded"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRANDED="--rf-stranded"; fi
 mkdir -p {config.out_dir}/{config.pseudo_aligner}/{sample}
 kallisto quant \\
     --threads 12 \\
@@ -1193,7 +1207,7 @@ input = [
     "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
     "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
     "{config.out_dir}/reference/kallisto",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/abundance.tsv",
@@ -1204,8 +1218,10 @@ output = [
 shell = """
 set -euo pipefail
 STRANDED=""
-if [ "{config.strandedness}" = "forward" ]; then STRANDED="--fr-stranded"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRANDED="--rf-stranded"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRANDED="--fr-stranded"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRANDED="--rf-stranded"; fi
 mkdir -p {config.out_dir}/{config.pseudo_aligner}/{sample}
 kallisto quant \\
     --threads 12 \\
@@ -1229,7 +1245,7 @@ input = [
     "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
     "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
     "{config.out_dir}/reference/kallisto",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/abundance.tsv",
@@ -1240,8 +1256,10 @@ output = [
 shell = """
 set -euo pipefail
 STRANDED=""
-if [ "{config.strandedness}" = "forward" ]; then STRANDED="--fr-stranded"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRANDED="--rf-stranded"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRANDED="--fr-stranded"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRANDED="--rf-stranded"; fi
 mkdir -p {config.out_dir}/{config.pseudo_aligner}/{sample}
 kallisto quant \\
     --threads 12 \\
@@ -1265,7 +1283,7 @@ input = [
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
     "{config.out_dir}/reference/kallisto",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/abundance.tsv",
@@ -1276,8 +1294,10 @@ output = [
 shell = """
 set -euo pipefail
 STRANDED=""
-if [ "{config.strandedness}" = "forward" ]; then STRANDED="--fr-stranded"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRANDED="--rf-stranded"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRANDED="--fr-stranded"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRANDED="--rf-stranded"; fi
 mkdir -p {config.out_dir}/{config.pseudo_aligner}/{sample}
 kallisto quant \\
     --threads 12 \\
@@ -1301,7 +1321,7 @@ input = [
     "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
     "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
     "{config.out_dir}/reference/salmon_index",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
@@ -1309,7 +1329,9 @@ output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) LIBTYPE=ISF ;;
     reverse) LIBTYPE=ISR ;;
     *) LIBTYPE=IU ;;
@@ -1340,7 +1362,7 @@ input = [
     "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
     "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
     "{config.out_dir}/reference/salmon_index",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
@@ -1348,7 +1370,9 @@ output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) LIBTYPE=ISF ;;
     reverse) LIBTYPE=ISR ;;
     *) LIBTYPE=IU ;;
@@ -1379,7 +1403,7 @@ input = [
     "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
     "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
     "{config.out_dir}/reference/salmon_index",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
@@ -1387,7 +1411,9 @@ output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) LIBTYPE=ISF ;;
     reverse) LIBTYPE=ISR ;;
     *) LIBTYPE=IU ;;
@@ -1418,7 +1444,7 @@ input = [
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
     "{config.out_dir}/reference/salmon_index",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
@@ -1426,7 +1452,9 @@ output = [
     "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) LIBTYPE=ISF ;;
     reverse) LIBTYPE=ISR ;;
     *) LIBTYPE=IU ;;
@@ -1453,7 +1481,7 @@ conda = "envs/salmon.yaml"
 [[rules]]
 name = "tx2gene_pseudo"
 description = "Build transcript-to-gene mapping for pseudo-alignment (nf-core CUSTOM_TX2GENE, prefix <pseudo_aligner>.merged; --quant-type from pseudo_aligner: quant.sf for salmon, abundance.tsv for kallisto)"
-input = ["{config.gtf}"]
+input = ["{config.out_dir}/reference/gtf.processed.gtf"]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene.tsv",
 ]

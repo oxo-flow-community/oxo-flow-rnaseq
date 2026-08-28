@@ -162,12 +162,10 @@
   ],
   "excluded": [
     "per-sample min_trimmed_reads filtering — data-dependent per-sample state (n of trimmed reads); only the MultiQC fail_trimmed table is produced",
-    "cat_fastq — only active for samples with more than one fastq pair; not expressible in the port's one-pair-per-sample sample model",
-    "auto strandedness (per-sample inference from the samplesheet) — pipeline-level config.strandedness with forward/reverse/unstranded values only; the inferred per-sample value has no consumer in a static DAG",
-    "PREPARE_GENOME GTF preprocessing chain — CUSTOM_GTFFILTER (GTF filtered to the genome's sequence names), gffread GFF->GTF, additional_fasta (CUSTOM_CATADDITIONALFASTA), GENCODE preprocessing and .gz/.tar.gz reference handling; the gene_bed / chrom_sizes / transcript_fasta derivations ARE ported as prepare_genome::* builder rules (empty config key = derived from fasta + gtf like upstream)",
+    "PREPARE_GENOME `.tar.gz` reference bundles — bbsplit / sortmerna index archives; the GTF preprocessing chain itself (CUSTOM_GTFFILTER with the upstream filter_gtf_needed gate, gffread GFF->GTF, additional_fasta transgenes with biotype featurecounts_group_type / gene_type, GENCODE preprocessing, .gz references) is ported as gated prepare_genome::* builder rules with canonical results/reference/ artifacts",
     "workflow_summary_mqc.yaml / methods_description_mqc.yaml — Nextflow-param-rendered MultiQC sections"
   ],
-  "rule_count": 135,
+  "rule_count": 257,
   "tools": [
     "fastqc",
     "trim-galore",
