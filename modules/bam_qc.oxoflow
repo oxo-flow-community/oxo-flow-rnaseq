@@ -30,14 +30,16 @@ name = "featurecounts"
 description = "Gene counts with featureCounts (nf-core SUBREAD_FEATURECOUNTS, -B -C, strandedness from config)"
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/featurecounts/{sample}.featureCounts.tsv",
     "{config.out_dir}/{config.aligner}/featurecounts/{sample}.featureCounts.tsv.summary",
 ]
 shell = """
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) S=1;;
     reverse) S=2;;
     *) S=0;;
@@ -278,7 +280,7 @@ name = "dupradar"
 description = "Duplicate rate analysis with dupRadar (nf-core DUPRADAR)"
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/dupradar/box_plot/{sample}_duprateExpBoxplot.pdf",
@@ -295,7 +297,9 @@ export BAM={input[0]}
 export GTF={input[1]}
 export PREFIX={sample}
 export THREADS=1
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) export STRANDED=1;;
     reverse) export STRANDED=2;;
     *) export STRANDED=0;;
@@ -325,7 +329,7 @@ description = "Name-sort markdup BAM for Qualimap (nf-core SAMTOOLS_SORT_QUALIMA
 input = ["{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam"]
 output = ["{config.out_dir}/{config.aligner}/qualimap/{sample}.namesorted.bam"]
 shell = """
-samtools cat {input[0]} | samtools sort -n -T {sample}.namesorted --threads 6 --reference {config.fasta} -o {output[0]} -
+samtools cat {input[0]} | samtools sort -n -T {sample}.namesorted --threads 6 --reference {config.out_dir}/reference/genome.fa -o {output[0]} -
 """
 when = "!config.skip_qc"
 [rules.resources]
@@ -344,14 +348,16 @@ name = "qualimap_rnaseq"
 description = "Qualimap RNA-seq QC (nf-core QUALIMAP_RNASEQ, --sorted, -Xmx29491M)"
 input = [
     "{config.out_dir}/{config.aligner}/qualimap/{sample}.namesorted.bam",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = ["{config.out_dir}/{config.aligner}/qualimap/{sample}/rnaseq_qc_results.txt"]
 shell = """
 unset DISPLAY
 mkdir -p tmp
 export _JAVA_OPTIONS=-Djava.io.tmpdir=./tmp
-case "{config.strandedness}" in
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
     forward) P=strand-specific-forward;;
     reverse) P=strand-specific-reverse;;
     *) P=non-strand-specific;;

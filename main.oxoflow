@@ -20,14 +20,16 @@
 #   are pulled in below via [[include]] namespaces.
 #
 # Not ported (see README fidelity table): per-sample min_trimmed_reads
-# filtering, 'auto' strandedness (samplesheet-derived state has no consumer
-# in a static DAG), cat_fastq multi-pair concatenation, the Nextflow-param-
-# rendered workflow_summary / methods_description MultiQC sections, and the
-# GTF preprocessing chain (CUSTOM_GTFFILTER, gffread GFF->GTF, additional_fasta,
-# GENCODE preprocessing, .gz/.tar.gz reference handling). PREPARE_GENOME
-# derivations ARE ported: gene_bed / chrom_sizes / transcript_fasta are
-# auto-built from fasta+gtf in modules/prepare_genome.oxoflow when the
-# corresponding config key is empty (defaults point at the shipped fixtures).
+# filtering, the Nextflow-param-rendered workflow_summary / methods_description
+# MultiQC sections, and .tar.gz reference bundles (bbsplit / sortmerna index
+# archives; gtf / gff / fasta / additional_fasta / transcript_fasta accept
+# plain or .gz paths like upstream). Ported in this wave: cat_fastq multi-pair
+# read merging (fastq_qc::cat_reads via input_groups), per-sample strandedness
+# (metadata_file 'strandedness' column with config fallback) and the
+# PREPARE_GENOME reference chain (CUSTOM_GTFFILTER / gffread GFF->GTF /
+# additional_fasta / GENCODE preprocessing). gene_bed / chrom_sizes /
+# transcript_fasta are auto-built from fasta+gtf in modules/prepare_genome.oxoflow
+# when the corresponding config key is empty (defaults point at the shipped fixtures).
 
 [workflow]
 name = "oxo-flow-rnaseq"
@@ -55,10 +57,33 @@ gene_bed = "test/fixtures/reference/gene.bed"
 chrom_sizes = "test/fixtures/reference/chrom_sizes.txt"
 star_index = "test/fixtures/reference/star_index"
 transcript_fasta = "test/fixtures/reference/transcripts.fa"
+# PREPARE_GENOME reference chain (upstream subworkflows/local/prepare_genome):
+# gtf / fasta may be gzipped (.gz); gff is converted to GTF with gffread;
+# the GTF is filtered to genome sequences when skip_gtf_filter=false (the
+# upstream gate: alignment or pseudo-alignment enabled, or no
+# transcript_fasta); additional_fasta (optionally .gz) is concatenated onto
+# the genome and its sequences appended to the GTF as transgenes with
+# biotype featurecounts_group_type. Canonical artifacts under
+# results/reference/ (gtf.processed.gtf, genome.fa) feed every downstream
+# rule. Note: gtf_extra_attributes / gtf_group_features are tximport /
+# featureCounts-only upstream -- they do not gate the filter.
+gff = ""
+additional_fasta = ""
+skip_gtf_filter = false
+skip_gtf_transcript_filter = false
+# gencode: GENCODE reference genomes use gene_type as the group feature and
+# preprocess a provided transcript_fasta by stripping '|'-joined identifiers
+# (upstream PREPROCESS_TRANSCRIPTS_FASTA_GENCODE: cut -d "|" -f1).
+gencode = false
 # Library strandedness. Upstream reads this per-sample from the samplesheet
-# ('auto' supported); the port is pipeline-level and supports the three
-# explicit values only. Used by featureCounts (-s), Qualimap (-p), dupRadar
-# and the forward/reverse bigWig gates.
+# ('auto' supported); the port falls back to this pipeline-level value. Three
+# explicit values are supported; 'auto' behaves like the fallback (resolved
+# per rule). For per-sample strandedness, add a metadata_file with a
+# 'strandedness' column ('forward' / 'reverse' / 'unstranded' / 'auto' /
+# empty): each rule resolves the metadata value first and falls back to this
+# key when the column is missing, empty or 'auto'. Consumers: featureCounts
+# (-s), Qualimap (-p), dupRadar, salmon/kallisto/RSEM/StringTie library-type,
+# HISAT2 --rna-strandness and the forward/reverse bigWig gates.
 strandedness = "unstranded"
 # Aligner selector (upstream: --aligner). The port supports the upstream
 # default 'star_salmon' plus the non-default branches (star_rsem, hisat2,
@@ -95,6 +120,10 @@ skip_bigwig = false
 # upstream parity and reserved for future use.
 save_trimmed = false
 save_align_intermeds = false
+# CAT_FASTQ merged reads (upstream --save_merged_fastq): the merged FASTQs
+# are always kept at results/read_merging/ (they double as checkpoints); the
+# key is accepted for upstream parity, like save_trimmed.
+save_merged_fastq = false
 # Salmon quantification (upstream default path, alignment mode on the STAR
 # toTranscriptome BAM). --libType is derived from config.strandedness
 # (forward -> ISF, reverse -> ISR, unstranded -> IU); set

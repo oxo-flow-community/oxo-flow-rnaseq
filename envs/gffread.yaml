@@ -1,0 +1,9 @@
+# Environment for GFFREAD (gff -> GTF conversion in the reference chain),
+# pinned exactly to the upstream nf-core/rnaseq 3.26.0 module environment
+# (modules/nf-core/gffread/environment.yml).
+name: gffread
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::gffread=0.12.7

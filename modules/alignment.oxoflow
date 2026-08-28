@@ -47,7 +47,7 @@ input = [
     "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
     "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -81,7 +81,7 @@ input = [
     "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
     "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -111,7 +111,7 @@ input = [
     "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
     "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -141,7 +141,7 @@ input = [
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -175,7 +175,7 @@ input = [
     "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
     "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -205,7 +205,7 @@ input = [
     "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
     "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -235,7 +235,7 @@ input = [
     "{config.out_dir}/sortmerna/{sample}_1.non_rRNA.fastq.gz",
     "{config.out_dir}/sortmerna/{sample}_2.non_rRNA.fastq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -265,7 +265,7 @@ input = [
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_1.fastq.gz",
     "{config.out_dir}/bowtie2_rrna/{sample}.bowtie2_filtered_2.fastq.gz",
     "{config.star_index}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
@@ -294,7 +294,7 @@ conda = "envs/star.yaml"
 [[rules]]
 name = "hisat2_splicesites"
 description = "Extract splice sites from GTF for HISAT2 (nf-core HISAT2_EXTRACTSPLICESITES)"
-input = ["{config.gtf}"]
+input = ["{config.out_dir}/reference/gtf.processed.gtf"]
 output = ["{config.out_dir}/reference/genes.splice_sites.txt"]
 shell = """
 hisat2_extract_splice_sites.py {input[0]} > {output[0]}
@@ -314,8 +314,8 @@ conda = "envs/hisat2.yaml"
 name = "hisat2_index"
 description = "Build HISAT2 index with splice sites and exons (nf-core HISAT2_BUILD, or symlink a user-supplied index)"
 input = [
-    "{config.fasta}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/genome.fa",
+    "{config.out_dir}/reference/gtf.processed.gtf",
     "{config.out_dir}/reference/genes.splice_sites.txt",
 ]
 output = ["{config.out_dir}/reference/hisat2_index"]
@@ -392,8 +392,12 @@ output = [
 shell = """
 set -euo pipefail
 STRAND=""
-if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
 INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
 hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
 mkdir -p {config.out_dir}/{config.aligner}/log
@@ -423,8 +427,12 @@ output = [
 shell = """
 set -euo pipefail
 STRAND=""
-if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
 INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
 hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
 mkdir -p {config.out_dir}/{config.aligner}/log
@@ -454,8 +462,12 @@ output = [
 shell = """
 set -euo pipefail
 STRAND=""
-if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
 INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
 hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
 mkdir -p {config.out_dir}/{config.aligner}/log
@@ -485,8 +497,12 @@ output = [
 shell = """
 set -euo pipefail
 STRAND=""
-if [ "{config.strandedness}" = "forward" ]; then STRAND="--rna-strandness FR"; fi
-if [ "{config.strandedness}" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
 INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
 hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
 mkdir -p {config.out_dir}/{config.aligner}/log
@@ -626,7 +642,7 @@ description = "Coordinate-sort HISAT2 BAM (nf-core SAMTOOLS_SORT in FASTQ_ALIGN_
 input = ["{config.out_dir}/{config.aligner}/{sample}.bam"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.sorted.bam"]
 shell = """
-samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.out_dir}/reference/genome.fa -o {output[0]} -
 """
 when = "config.aligner == 'hisat2' && !config.skip_alignment"
 [rules.resources]
@@ -645,7 +661,7 @@ description = "Coordinate-sort Bowtie2 BAM (nf-core SAMTOOLS_SORT in ALIGN_BOWTI
 input = ["{config.out_dir}/{config.aligner}/{sample}.bam"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.sorted.bam"]
 shell = """
-samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.out_dir}/reference/genome.fa -o {output[0]} -
 """
 when = "config.aligner == 'bowtie2_salmon' && !config.skip_alignment"
 [rules.resources]
@@ -661,7 +677,7 @@ description = "Coordinate-sort STAR BAM (nf-core SAMTOOLS_SORT in BAM_SORT_STATS
 input = ["{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam"]
 output = ["{config.out_dir}/{config.aligner}/{sample}.sorted.bam"]
 shell = """
-samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.fasta} -o {output[0]} -
+samtools cat {input[0]} | samtools sort -T {sample}.sorted --threads 6 --reference {config.out_dir}/reference/genome.fa -o {output[0]} -
 """
 when = "config.aligner == 'star_salmon' || config.aligner == 'star_rsem'"
 [rules.resources]
@@ -698,7 +714,7 @@ shell = """
 # the .bai is a declared input for invalidation, NOT a region —
 # (live: passing it positionally made samtools treat it as a region:
 # "Region '...bam.bai' specifies an unknown reference name")
-samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
+samtools stats --threads 1 --reference {config.out_dir}/reference/genome.fa {input[0]} > {output[0]}
 """
 [rules.resources]
 threads = 1
@@ -750,7 +766,7 @@ name = "picard_markduplicates"
 description = "Mark duplicates with Picard (nf-core PICARD_MARKDUPLICATES, -Xmx29491M, prefix <id>.markdup.sorted)"
 input = [
     "{config.out_dir}/{config.aligner}/{sample}.sorted.bam",
-    "{config.fasta}",
+    "{config.out_dir}/reference/genome.fa",
 ]
 output = [
     "{config.out_dir}/{config.aligner}/{sample}.markdup.sorted.bam",
@@ -797,7 +813,7 @@ shell = """
 # the .bai is a declared input for invalidation, NOT a region —
 # (live: passing it positionally made samtools treat it as a region:
 # "Region '...bam.bai' specifies an unknown reference name")
-samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
+samtools stats --threads 1 --reference {config.out_dir}/reference/genome.fa {input[0]} > {output[0]}
 """
 when = "!config.skip_markduplicates && !config.with_umi"
 [rules.resources]
@@ -1067,7 +1083,7 @@ input = [
 ]
 output = ["{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.stats"]
 shell = """
-samtools stats --threads 1 --reference {config.fasta} {input[0]} > {output[0]}
+samtools stats --threads 1 --reference {config.out_dir}/reference/genome.fa {input[0]} > {output[0]}
 """
 when = "config.with_umi && !config.skip_alignment"
 [rules.resources]

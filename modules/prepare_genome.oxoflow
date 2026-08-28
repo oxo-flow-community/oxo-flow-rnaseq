@@ -13,6 +13,221 @@ description = "Reference derivations: gene BED (ea-utils gtf2bed), chrom.sizes (
 # otherwise produce a broken link, unlike {input[i]} which renders absolute).
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# Reference chain (upstream subworkflows/local/prepare_genome): the shipped
+# gtf / fasta may be gzipped (.gz); config.gff is converted to GTF with
+# gffread; the GTF is filtered to genome sequences (CUSTOM_GTFFILTER) when
+# the upstream gate holds and skip_gtf_filter=false; additional_fasta
+# (optionally .gz) is concatenated onto the genome and its sequences
+# appended to the GTF as transgenes with biotype featurecounts_group_type.
+# Canonical artifacts consumed by every downstream rule:
+#   results/reference/gtf.gtf -> gtf.filtered.gtf -> gtf.processed.gtf
+#   results/reference/genome.fa
+# The rules below use exclusive when-gates (repo pattern) so exactly one
+# variant writes each canonical path. NOTE: the [[references]] STAR index
+# builder in main.oxoflow keeps the raw fixture paths -- references build
+# before the rule DAG, so they cannot wait on these rule outputs.
+# ---------------------------------------------------------------------------
+
+# GUNZIP_GTF: gunzip a .gz GTF, else copy. Exclusive with gffread_gtf.
+[[rules]]
+name = "gtf_gunzip"
+description = "Canonicalize the GTF, gunzipping if .gz (nf-core GUNZIP_GTF)"
+input = ["{config.gtf}"]
+output = ["{config.out_dir}/reference/gtf.gtf"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+case "{config.gtf}" in
+    *.gz) gzip -dc {input[0]} > {output[0]} ;;
+    *)    cp {input[0]} {output[0]} ;;
+esac
+"""
+when = "config.gff == \"\""
+[rules.resources]
+threads = 1
+memory = "2G"
+[rules.environment]
+conda = "envs/python.yaml"
+
+# GFFREAD: gff -> gtf when config.gff is set (upstream ext.args
+# --keep-exon-attrs -F -T). Exclusive with gtf_gunzip.
+[[rules]]
+name = "gffread_gtf"
+description = "Convert the GFF annotation to GTF with gffread (nf-core GFFREAD, --keep-exon-attrs -F -T)"
+input = ["{config.gff}"]
+output = ["{config.out_dir}/reference/gtf.gtf"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+case "{config.gff}" in
+    *.gz) gzip -dc {input[0]} > gffread_in.gff ;;
+    *)    cp {input[0]} gffread_in.gff ;;
+esac
+gffread --keep-exon-attrs -F -T -o {output[0]} gffread_in.gff
+"""
+when = "config.gff != \"\""
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/gffread.yaml"
+
+# GUNZIP_FASTA: canonicalize the genome FASTA, gunzipping if .gz.
+# Exclusive with fa_additional.
+[[rules]]
+name = "fa_gunzip"
+description = "Canonicalize the genome FASTA, gunzipping if .gz (nf-core GUNZIP_FASTA)"
+input = ["{config.fasta}"]
+output = ["{config.out_dir}/reference/genome.fa"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+case "{config.fasta}" in
+    *.gz) gzip -dc {input[0]} > {output[0]} ;;
+    *)    cp {input[0]} {output[0]} ;;
+esac
+"""
+when = "config.additional_fasta == \"\""
+[rules.resources]
+threads = 1
+memory = "2G"
+[rules.environment]
+conda = "envs/python.yaml"
+
+# CUSTOM_CATADDITIONALFASTA (fasta half): concatenate additional_fasta onto
+# the genome. Exclusive with fa_gunzip; both write reference/genome.fa.
+[[rules]]
+name = "fa_additional"
+description = "Concatenate additional_fasta onto the genome FASTA (nf-core CUSTOM_CATADDITIONALFASTA fasta emit)"
+input = ["{config.fasta}", "{config.additional_fasta}"]
+output = ["{config.out_dir}/reference/genome.fa"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+case "{config.fasta}" in
+    *.gz) gzip -dc {input[0]} > genome_plain.fa ;;
+    *)    cp {input[0]} genome_plain.fa ;;
+esac
+case "{config.additional_fasta}" in
+    *.gz) gzip -dc {input[1]} >> genome_plain.fa ;;
+    *)    cat {input[1]} >> genome_plain.fa ;;
+esac
+mv genome_plain.fa {output[0]}
+"""
+when = "config.additional_fasta != \"\""
+[rules.resources]
+threads = 1
+memory = "2G"
+[rules.environment]
+conda = "envs/python.yaml"
+
+# CUSTOM_GTFFILTER: keep lines whose seqname is in the genome FASTA (and
+# that carry a transcript_id unless skip_gtf_transcript_filter). Upstream
+# gate: filter needed when alignment or pseudo-alignment is enabled or no
+# transcript_fasta is supplied, and skip_gtf_filter is false. The filter
+# runs against the plain (pre-additional) genome like upstream.
+[[rules]]
+name = "gtf_filter"
+description = "Filter the GTF to genome sequences with gtffilter.py (nf-core CUSTOM_GTFFILTER)"
+input = [
+    "{config.out_dir}/reference/gtf.gtf",
+    "{config.fasta}",
+]
+output = ["{config.out_dir}/reference/gtf.filtered.gtf"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+case "{config.fasta}" in
+    *.gz) gzip -dc {input[1]} > genome_plain.fa ;;
+    *)    cp {input[1]} genome_plain.fa ;;
+esac
+if [ "{config.skip_gtf_transcript_filter}" = "true" ]; then
+    SKIP_TRANSCRIPT_ID="--skip_transcript_id_check"
+else
+    SKIP_TRANSCRIPT_ID=""
+fi
+python scripts/gtffilter.py $SKIP_TRANSCRIPT_ID {input[0]} genome_plain.fa {output[0]}
+"""
+when = '!config.skip_gtf_filter && ((!config.skip_alignment && config.aligner != "") || (!config.skip_pseudo_alignment && config.pseudo_aligner != "") || config.transcript_fasta == "")'
+[rules.resources]
+threads = 1
+memory = "4G"
+[rules.environment]
+conda = "envs/python.yaml"
+
+# Filter bypass: copy when the upstream filter_gtf_needed gate is false.
+# Exclusive with gtf_filter; both write reference/gtf.filtered.gtf.
+[[rules]]
+name = "gtf_filter_pass"
+description = "Copy the GTF when CUSTOM_GTFFILTER is not needed (upstream filter_gtf_needed gate)"
+input = ["{config.out_dir}/reference/gtf.gtf"]
+output = ["{config.out_dir}/reference/gtf.filtered.gtf"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+cp {input[0]} {output[0]}
+"""
+when = 'config.skip_gtf_filter || ((config.skip_alignment || config.aligner == "") && (config.skip_pseudo_alignment || config.pseudo_aligner == "") && config.transcript_fasta != "")'
+[rules.resources]
+threads = 1
+memory = "1G"
+[rules.environment]
+conda = "envs/python.yaml"
+
+# CUSTOM_CATADDITIONALFASTA (gtf half): append transgene GTF lines generated
+# from additional_fasta (fasta2gtf.py), biotype from featurecounts_group_type
+# like upstream (gencode ? gene_type : featurecounts_group_type).
+[[rules]]
+name = "gtf_additional"
+description = "Append transgene GTF lines from additional_fasta (nf-core CUSTOM_CATADDITIONALFASTA gtf emit)"
+input = [
+    "{config.out_dir}/reference/gtf.filtered.gtf",
+    "{config.additional_fasta}",
+]
+output = ["{config.out_dir}/reference/gtf.processed.gtf"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+case "{config.additional_fasta}" in
+    *.gz) gzip -dc {input[1]} > additional_plain.fa ;;
+    *)    cp {input[1]} additional_plain.fa ;;
+esac
+if [ "{config.gencode}" = "true" ]; then
+    BIOTYPE="gene_type"
+else
+    BIOTYPE="{config.featurecounts_group_type}"
+fi
+python scripts/fasta2gtf.py additional_plain.fa --biotype $BIOTYPE --out transgenes.gtf
+cat {input[0]} transgenes.gtf > {output[0]}
+"""
+when = "config.additional_fasta != \"\""
+[rules.resources]
+threads = 1
+memory = "2G"
+[rules.environment]
+conda = "envs/python.yaml"
+
+# Pass-through when no additional_fasta is set. Exclusive with gtf_additional;
+# both write reference/gtf.processed.gtf.
+[[rules]]
+name = "gtf_pass"
+description = "Copy the filtered GTF when no additional_fasta is set"
+input = ["{config.out_dir}/reference/gtf.filtered.gtf"]
+output = ["{config.out_dir}/reference/gtf.processed.gtf"]
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/reference
+cp {input[0]} {output[0]}
+"""
+when = "config.additional_fasta == \"\""
+[rules.resources]
+threads = 1
+memory = "1G"
+[rules.environment]
+conda = "envs/python.yaml"
+
 # EAUTILS_GTF2BED (modules/nf-core/ea-utils/gtf2bed): perl gtf2bed.pl <gtf>
 # <prefix> -> <prefix>.bed. Upstream runs it without ext.args (no -x), so the
 # 12-column BED carries transcript ids; runs on any non-prokaryotic GTF
@@ -20,7 +235,7 @@ description = "Reference derivations: gene BED (ea-utils gtf2bed), chrom.sizes (
 [[rules]]
 name = "gene_bed"
 description = "Derive the 12-column gene BED from the GTF with ea-utils gtf2bed (nf-core EAUTILS_GTF2BED, or symlink a user-supplied gene_bed)"
-input = ["{config.gtf}"]
+input = ["{config.out_dir}/reference/gtf.processed.gtf"]
 output = ["{config.out_dir}/reference/gene.bed"]
 shell = """
 set -euo pipefail
@@ -46,7 +261,7 @@ conda = "envs/gtf2bed.yaml"
 [[rules]]
 name = "chrom_sizes"
 description = "Derive UCSC chrom.sizes from the genome FASTA with samtools faidx (nf-core SAMTOOLS_FAIDX, or symlink a user-supplied chrom_sizes)"
-input = ["{config.fasta}"]
+input = ["{config.out_dir}/reference/genome.fa"]
 output = ["{config.out_dir}/reference/chrom_sizes.txt"]
 shell = """
 set -euo pipefail
@@ -84,16 +299,26 @@ conda = "envs/samtools.yaml"
 name = "transcript_fasta"
 description = "Derive the transcript FASTA from the genome + GTF with RSEM (nf-core RSEM_PREPAREREFERENCE transcript_fasta emit, or symlink a user-supplied transcript_fasta)"
 input = [
-    "{config.fasta}",
-    "{config.gtf}",
+    "{config.out_dir}/reference/genome.fa",
+    "{config.out_dir}/reference/gtf.processed.gtf",
 ]
 output = ["{config.out_dir}/reference/transcripts.fa"]
 shell = """
 set -euo pipefail
 mkdir -p {config.out_dir}/reference
 if [ -n "{config.transcript_fasta}" ]; then
-    TRANSCRIPT_FASTA=$(cd "$(dirname {config.transcript_fasta})" && pwd)/$(basename {config.transcript_fasta})
-    ln -s "$TRANSCRIPT_FASTA" {config.out_dir}/reference/transcripts.fa
+    case "{config.transcript_fasta}" in
+        *.gz) CAT_CMD="zcat" ;;
+        *)    CAT_CMD="cat" ;;
+    esac
+    if [ "{config.gencode}" = "true" ]; then
+        # Upstream PREPROCESS_TRANSCRIPTS_FASTA_GENCODE: GENCODE headers
+        # carry '|'-separated identifiers; keep only the first field.
+        $CAT_CMD {config.transcript_fasta} | cut -d "|" -f1 > {config.out_dir}/reference/transcripts.fa
+    else
+        TRANSCRIPT_FASTA=$(cd "$(dirname {config.transcript_fasta})" && pwd)/$(basename {config.transcript_fasta})
+        ln -s "$TRANSCRIPT_FASTA" {config.out_dir}/reference/transcripts.fa
+    fi
     exit 0
 fi
 mkdir rsem_tf

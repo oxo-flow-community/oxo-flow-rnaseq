@@ -47,11 +47,49 @@
 name = "fastq_qc"
 description = "Read QC: fq lint on raw reads, FastQC, UMI extraction, TrimGalore trimming with internal FastQC, fq lint on trimmed reads, BBSplit genome filtering, rRNA removal (SortMeRNA/Bowtie2) and FastQC on filtered reads"
 
+# CAT_FASTQ (read merging): one instance per sample via input_groups. All
+# reads of a sample under reads_dir match {sample}_R{read}.fastq.gz; the
+# {read} wildcard absorbs the lane suffix of multi-pair runs, e.g.
+#   S7_R1_001.fastq.gz S7_R1_002.fastq.gz S7_R2_001.fastq.gz S7_R2_002.fastq.gz
+# (note: `*` is a literal in input_groups patterns -- no globs). Files are
+# discovered relative to the workflow root, so reads_dir must live under it.
+# Reads of one mate are concatenated in sorted order (upstream CAT_FASTQ
+# `cat <files> > out`); single-pair samples are copied through byte-identically.
+# Merged reads are always kept at results/read_merging/ (save_merged_fastq
+# accepted for upstream parity, like save_trimmed).
+[[rules]]
+name = "cat_reads"
+description = "Merge multi-pair FASTQs per sample with cat (nf-core CAT_FASTQ, outputs <id>_1/2.merged.fastq.gz)"
+input_groups = [{ pattern = "{config.reads_dir}/{sample}_R{read}.fastq.gz", group_by = "sample" }]
+output = [
+    "{config.out_dir}/read_merging/{sample}_1.merged.fastq.gz",
+    "{config.out_dir}/read_merging/{sample}_2.merged.fastq.gz",
+]
+shell = """
+read -ra FILES <<< "{input}"
+read -ra READS <<< "{input_group.read}"
+R1=""
+R2=""
+for i in "${!FILES[@]}"; do
+    case "${READS[$i]}" in
+        1*) R1="$R1 ${FILES[$i]}" ;;
+        *)  R2="$R2 ${FILES[$i]}" ;;
+    esac
+done
+mkdir -p {config.out_dir}/read_merging
+cat $R1 > {config.out_dir}/read_merging/{sample}_1.merged.fastq.gz
+cat $R2 > {config.out_dir}/read_merging/{sample}_2.merged.fastq.gz
+"""
+[rules.resources]
+threads = 1
+memory = "2G"
+
+
 # FQ_LINT: fq lint <extra_fqlint_args> <R1> <R2> > <id>.fq_lint.txt
 [[rules]]
 name = "fq_lint_raw"
 description = "Lint raw FASTQs with fq (nf-core FQ_LINT, --disable-validator P001)"
-input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+input = ["{config.out_dir}/read_merging/{sample}_1.merged.fastq.gz", "{config.out_dir}/read_merging/{sample}_2.merged.fastq.gz"]
 output = ["{config.out_dir}/fq_lint/raw/{sample}.fq_lint.txt"]
 shell = """
 fq lint {config.extra_fqlint_args} {input[0]} {input[1]} > {output[0]}
@@ -69,7 +107,7 @@ conda = "envs/fq.yaml"
 [[rules]]
 name = "fastqc_raw"
 description = "FastQC on raw reads (nf-core FASTQC, prefix <id>_raw, --quiet --memory 6000)"
-input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+input = ["{config.out_dir}/read_merging/{sample}_1.merged.fastq.gz", "{config.out_dir}/read_merging/{sample}_2.merged.fastq.gz"]
 output = [
     "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.html",
     "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.zip",
@@ -103,7 +141,7 @@ conda = "envs/fastqc.yaml"
 [[rules]]
 name = "umitools_extract_umis"
 description = "Extract UMIs from raw reads with umi_tools (nf-core UMITOOLS_EXTRACT PE branch, prefix <id>)"
-input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+input = ["{config.out_dir}/read_merging/{sample}_1.merged.fastq.gz", "{config.out_dir}/read_merging/{sample}_2.merged.fastq.gz"]
 output = [
     "{config.out_dir}/umitools/{sample}.umi_extract_1.fastq.gz",
     "{config.out_dir}/umitools/{sample}.umi_extract_2.fastq.gz",
@@ -146,7 +184,7 @@ conda = "envs/umitools.yaml"
 [[rules]]
 name = "trimgalore"
 description = "Adapter trimming with TrimGalore (nf-core TRIMGALORE PE branch, internal FastQC, prefix <id>_trimmed)"
-input = ["{config.reads_dir}/{sample}_R1.fastq.gz", "{config.reads_dir}/{sample}_R2.fastq.gz"]
+input = ["{config.out_dir}/read_merging/{sample}_1.merged.fastq.gz", "{config.out_dir}/read_merging/{sample}_2.merged.fastq.gz"]
 output = [
     "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
     "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
@@ -242,7 +280,7 @@ conda = "envs/fq.yaml"
 [[rules]]
 name = "bbsplit_index"
 description = "Build the BBSplit index from the genome + bbsplit_fasta_list CSV (nf-core BBMAP_BBSPLIT build-only, canonical dir results/reference/bbsplit_index)"
-input = ["{config.fasta}"]
+input = ["{config.out_dir}/reference/genome.fa"]
 output = ["{config.out_dir}/reference/bbsplit_index"]
 shell = """
 if [ -n "{config.bbsplit_index}" ]; then
