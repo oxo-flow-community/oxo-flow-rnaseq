@@ -272,7 +272,9 @@ conda = "envs/fq.yaml"
 # ---------------------------------------------------------------------------
 
 # Index builder: emits the canonical dir {config.out_dir}/reference/bbsplit_index.
-# A user-supplied config.bbsplit_index short-circuits to a symlink; otherwise
+# A user-supplied config.bbsplit_index short-circuits: a .tar.gz/.tar archive is
+# untarred into the canonical dir (upstream UNTAR_BBSPLIT_INDEX), a directory is
+# symlinked as-is; otherwise
 # the index is built from config.fasta (primary) plus every CSV row of
 # config.bbsplit_fasta_list (short_name,path). Summary files get the relative
 # bbsplit_index/ref paths fixed exactly like the upstream build-mode block so
@@ -284,9 +286,19 @@ input = ["{config.out_dir}/reference/genome.fa"]
 output = ["{config.out_dir}/reference/bbsplit_index"]
 shell = """
 if [ -n "{config.bbsplit_index}" ]; then
-    rm -rf {config.out_dir}/reference/bbsplit_index
-    mkdir -p {config.out_dir}/reference
-    ln -s {config.bbsplit_index} {config.out_dir}/reference/bbsplit_index
+    case "{config.bbsplit_index}" in
+    *.tar.gz|*.tgz|*.tar)
+        rm -rf {config.out_dir}/reference/bbsplit_index
+        mkdir -p {config.out_dir}/reference/bbsplit_index
+        tar -xzf "{config.bbsplit_index}" -C {config.out_dir}/reference/bbsplit_index 2>/dev/null \\
+            || tar -xf "{config.bbsplit_index}" -C {config.out_dir}/reference/bbsplit_index
+        ;;
+    *)
+        rm -rf {config.out_dir}/reference/bbsplit_index
+        mkdir -p {config.out_dir}/reference
+        ln -s {config.bbsplit_index} {config.out_dir}/reference/bbsplit_index
+        ;;
+    esac
     exit 0
 fi
 if [ -z "{config.bbsplit_fasta_list}" ] || [ ! -s "{config.bbsplit_fasta_list}" ]; then
@@ -437,8 +449,9 @@ conda = "envs/sortmerna.yaml"
 # SORTMERNA_INDEX: sortmerna --ref <fasta>... --threads 12 --workdir .
 # --num_alignments 1 -v --index 1 writes idx/; the canonical dir holds the
 # .idx files directly (upstream emits path('idx') and the runtime uses it as
-# --idx-dir). A user-supplied config.sortmerna_index short-circuits to a
-# symlink (upstream UNTAR_SORTMERNA_INDEX stages the dir as-is).
+# --idx-dir). A user-supplied config.sortmerna_index short-circuits: a
+# .tar.gz/.tar archive is untarred into the canonical dir (upstream
+# UNTAR_SORTMERNA_INDEX), a directory is symlinked as-is.
 [[rules]]
 name = "sortmerna_index"
 description = "Build the SortMeRNA index from the rRNA FASTA references (nf-core SORTMERNA_INDEX, canonical dir results/reference/sortmerna_index)"
@@ -446,9 +459,19 @@ input = ["{config.out_dir}/reference/rrna_fastas"]
 output = ["{config.out_dir}/reference/sortmerna_index"]
 shell = """
 if [ -n "{config.sortmerna_index}" ]; then
-    rm -rf {config.out_dir}/reference/sortmerna_index
-    mkdir -p {config.out_dir}/reference
-    ln -s {config.sortmerna_index} {config.out_dir}/reference/sortmerna_index
+    case "{config.sortmerna_index}" in
+    *.tar.gz|*.tgz|*.tar)
+        rm -rf {config.out_dir}/reference/sortmerna_index
+        mkdir -p {config.out_dir}/reference/sortmerna_index
+        tar -xzf "{config.sortmerna_index}" -C {config.out_dir}/reference/sortmerna_index 2>/dev/null \\
+            || tar -xf "{config.sortmerna_index}" -C {config.out_dir}/reference/sortmerna_index
+        ;;
+    *)
+        rm -rf {config.out_dir}/reference/sortmerna_index
+        mkdir -p {config.out_dir}/reference
+        ln -s {config.sortmerna_index} {config.out_dir}/reference/sortmerna_index
+        ;;
+    esac
     exit 0
 fi
 REFS=""

@@ -20,10 +20,8 @@
 #   are pulled in below via [[include]] namespaces.
 #
 # Not ported (see README fidelity table): per-sample min_trimmed_reads
-# filtering, the Nextflow-param-rendered workflow_summary / methods_description
-# MultiQC sections, and .tar.gz reference bundles (bbsplit / sortmerna index
-# archives; gtf / gff / fasta / additional_fasta / transcript_fasta accept
-# plain or .gz paths like upstream). Ported in this wave: cat_fastq multi-pair
+# filtering and the Nextflow-param-rendered workflow_summary /
+# methods_description MultiQC sections. Ported in this wave: cat_fastq multi-pair
 # read merging (fastq_qc::cat_reads via input_groups), per-sample strandedness
 # (metadata_file 'strandedness' column with config fallback) and the
 # PREPARE_GENOME reference chain (CUSTOM_GTFFILTER / gffread GFF->GTF /
@@ -169,7 +167,8 @@ save_non_ribo_reads = false
 # --sortmerna_index). Empty index keys are auto-built by when-gated builder
 # rules in modules/alignment.oxoflow / quantification.oxoflow from the
 # shipped fixtures when the branch is enabled (like star_index); a
-# user-supplied path is symlinked in instead.
+# user-supplied path is untarred (.tar.gz/.tgz/.tar archives, like upstream
+# UNTAR_*_INDEX) or symlinked (directories) in instead.
 skip_alignment = false
 rsem_index = ""
 hisat2_index = ""
