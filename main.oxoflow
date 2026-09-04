@@ -19,8 +19,9 @@
 # - Read QC / alignment / BAM QC / bigWig rules live in modules/*.oxoflow and
 #   are pulled in below via [[include]] namespaces.
 #
-# Not ported (see README fidelity table): per-sample min_trimmed_reads
-# filtering and the Nextflow-param-rendered workflow_summary /
+# Not ported (see README fidelity table): the chain-wide per-sample
+# min_trimmed_reads drop (the fastqc_filtered_* rules DO gate on it via
+# reads_count) and the Nextflow-param-rendered workflow_summary /
 # methods_description MultiQC sections. Ported in this wave: cat_fastq multi-pair
 # read merging (fastq_qc::cat_reads via input_groups), per-sample strandedness
 # (metadata_file 'strandedness' column with config fallback) and the

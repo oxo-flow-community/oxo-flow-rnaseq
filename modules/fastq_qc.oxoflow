@@ -23,9 +23,11 @@
 #   fastqc_filtered_*      FASTQC_FILTERED          (process_low: 2/12G/4h)
 #
 # Fidelity notes:
-# - The per-sample min_trimmed_reads gate (reads below the threshold are
-#   dropped from the downstream chain) is a data-dependent workflow filter and
-#   is NOT ported — see README fidelity table.
+# - The per-sample min_trimmed_reads gate is ported on the fastqc_filtered_*
+#   variants via reads_count (>= config.min_trimmed_reads, matching the
+#   upstream drop filter); the chain-wide per-sample drop (alignment /
+#   quantification also excluded for failing samples) is NOT ported — see
+#   README fidelity table. Requires oxo-flow >= 0.17.0.
 # - Branches whose filtered-read source depends on earlier filters are ported
 #   as exclusive-gate rule variants with IDENTICAL outputs (sortmerna /
 #   bowtie2_align_rrna / fastqc_filtered / fq_lint_rrna): the engine's DAG
@@ -838,7 +840,7 @@ mkdir -p {config.out_dir}/fastqc/filtered
 mv {sample}_filtered_1_fastqc.html {sample}_filtered_1_fastqc.zip {config.out_dir}/fastqc/filtered/
 mv {sample}_filtered_2_fastqc.html {sample}_filtered_2_fastqc.zip {config.out_dir}/fastqc/filtered/
 """
-when = "!config.skip_fastqc && !config.skip_bbsplit && !config.remove_ribo_rna"
+when = "!config.skip_fastqc && !config.skip_bbsplit && !config.remove_ribo_rna && reads_count('{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz') >= config.min_trimmed_reads"
 [rules.resources]
 threads = 2
 memory = "12G"
@@ -870,7 +872,7 @@ mkdir -p {config.out_dir}/fastqc/filtered
 mv {sample}_filtered_1_fastqc.html {sample}_filtered_1_fastqc.zip {config.out_dir}/fastqc/filtered/
 mv {sample}_filtered_2_fastqc.html {sample}_filtered_2_fastqc.zip {config.out_dir}/fastqc/filtered/
 """
-when = "!config.skip_fastqc && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna'"
+when = "!config.skip_fastqc && config.remove_ribo_rna && config.ribo_removal_tool == 'sortmerna' && reads_count('{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz') >= config.min_trimmed_reads"
 [rules.resources]
 threads = 2
 memory = "12G"
@@ -902,7 +904,7 @@ mkdir -p {config.out_dir}/fastqc/filtered
 mv {sample}_filtered_1_fastqc.html {sample}_filtered_1_fastqc.zip {config.out_dir}/fastqc/filtered/
 mv {sample}_filtered_2_fastqc.html {sample}_filtered_2_fastqc.zip {config.out_dir}/fastqc/filtered/
 """
-when = "!config.skip_fastqc && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2'"
+when = "!config.skip_fastqc && config.remove_ribo_rna && config.ribo_removal_tool == 'bowtie2' && reads_count('{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz') >= config.min_trimmed_reads"
 [rules.resources]
 threads = 2
 memory = "12G"
