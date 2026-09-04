@@ -154,7 +154,7 @@ the upstream defaults:
 | `skip_gtf_transcript_filter` | `--skip_gtf_transcript_filter` | `false` | keep GTF lines without a `transcript_id` (gtffilter.py `--skip_transcript_id_check`) |
 | `gencode` | (GENCODE genome config) | `false` | GENCODE reference genomes: `gene_type` group feature + transcript-FASTA header truncation (see above) |
 | `salmon_quant_libtype` | `--salmon_quant_libtype` | (empty) | empty = derive from `strandedness` (forward → ISF, reverse → ISR, else IU); set e.g. `A` for auto-detection |
-| `min_trimmed_reads` | `--min_trimmed_reads` | `10000` | used for the MultiQC fail_trimmed table only (per-sample drop filter not ported) |
+| `min_trimmed_reads` | `--min_trimmed_reads` | `10000` | per-sample drop filter: gates the `fastqc_filtered_*` QC rules on the R2 trimmed-read count via `reads_count(...) >= config.min_trimmed_reads` (requires oxo-flow >= 0.17.0); also drives the MultiQC fail_trimmed table (chain-wide drop of failing samples not ported — fidelity row 5) |
 | `min_mapped_reads` | `--min_mapped_reads` | `5` | MultiQC fail_mapped table |
 | `stranded_threshold` | `--stranded_threshold` | `0.8` | RSeQC strand classification |
 | `unstranded_threshold` | `--unstranded_threshold` | `0.1` | RSeQC strand classification |
@@ -288,7 +288,7 @@ Known, documented deviations:
 | 2 | `PREPARE_GENOME` derives the reference artifacts (gene_bed via EAUTILS_GTF2BED, chrom_sizes via SAMTOOLS_FAIDX, transcript_fasta via RSEM_PREPAREREFERENCE) and builds the branch indexes (STAR / HISAT2 / RSEM / Salmon) | The artifact derivations are ported as `prepare_genome::gene_bed` / `chrom_sizes` / `transcript_fasta` builder rules (empty config key = derive from fasta + gtf like upstream; non-empty key = the user path is symlinked in); the index builders: STAR via the `[[references]]` builder, HISAT2 / RSEM / Salmon / Bowtie2 / Kallisto via when-gated builder rules | The GTF preprocessing chain is ported (CUSTOM_GTFFILTER with the upstream `filter_gtf_needed` gate, gffread GFF→GTF, additional_fasta transgenes, GENCODE preprocessing, `.gz` references — see `modules/prepare_genome.oxoflow`); fasta and gtf remain required inputs; user-supplied `bbsplit_index` / `sortmerna_index` paths are staged into the canonical dir like upstream `UNTAR_BBSPLIT_INDEX` / `UNTAR_SORTMERNA_INDEX` (`.tar.gz`/`.tgz`/`.tar` archives untarred, directories symlinked) |
 | 3 | Non-default branches: `star_rsem`, `hisat2`, `bowtie2_salmon`, `--with_umi`, `--pseudo_aligner salmon`, `--pseudo_aligner kallisto` | Ported — see rows 16-27 for their deviations | RSEM runs in `--alignments` mode in every RSEM path, exactly like upstream (the nf-core `as_quantification` mode never existed in the rnaseq pipeline) |
 | 4 | SALMON_QUANT (alignment mode) + CUSTOM_TX2GENE + TXIMETA_TXIMPORT + SUMMARIZEDEXPERIMENT_* — the default-path quantification chain | Ported as `quantification::salmon_quant` / `tx2gene` / `tximport` / `summarizedexperiment` | The upstream 4-process chain is mirrored as 4 rules; tx2gene runs on the first sample's quant dir (upstream `.first()`); the SE process runs twice (gene + transcript) inside one rule with the upstream `--assay_names` values |
-| 5 | `min_trimmed_reads` gate drops failing samples from the downstream chain | Only the MultiQC fail_trimmed table is produced | The filter is data-dependent per-sample state (n of trimmed reads), not expressible as a static DAG |
+| 5 | `min_trimmed_reads` gate drops failing samples from the downstream chain | The `fastqc_filtered_*` QC rules gate on the R2 trimmed-read count via `reads_count('{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz') >= config.min_trimmed_reads` (matching the upstream drop filter `>=`); failing samples get their filtered-read QC skipped and the MultiQC fail_trimmed table is still produced | Requires oxo-flow >= 0.17.0. The port gates only the filtered-read QC steps — the upstream chain-wide per-sample drop (alignment, quantification and every other downstream step also excluded for failing samples) is data-dependent channel state and remains not ported; the fail_trimmed TSV keeps the upstream `n <= threshold` listing quirk (a sample exactly at the threshold passes the drop but is still listed) |
 | 6 | `skip_trimming` / `skip_markduplicates` rewire the downstream inputs (QC runs on raw / sorted BAM) | `skip_trimming=true` / `skip_markduplicates=true` break the downstream chain (trimmed reads / markdup BAM are rule inputs) | oxo-flow inputs are static paths; use the defaults |
 | 7 | `save_trimmed` / `save_align_intermeds` control publication; intermediates live in workdir | Trimmed FASTQs and intermediate BAMs are always kept at `results/` paths (they double as run checkpoints) | oxo-flow re-executes from declared outputs |
 | 8 | RSeQC PDFs are published upstream: `*.pdf` outputs of RSEQC_JUNCTIONANNOTATION (`splicing_events_pie.pdf`, `splicing_junction_pie.pdf`), RSEQC_JUNCTIONSATURATION (`junctionSaturation_plot.pdf`), read_duplication and inner_distance — plus two zero-byte touch placeholders (`junction.pdf`, `events.pdf`) | The same PDFs are kept under `junction_annotation/pdf/`, `junction_saturation/pdf/`, `read_duplication/pdf/`, `inner_distance/pdf/` with `<id>.`-prefixed names (e.g. `<id>.junction_events.pdf`); the zero-byte `junction.pdf` / `events.pdf` touch placeholders are not produced | Layout only — the published artifact set is the same; the touch placeholders are upstream artifacts MultiQC ignores |
@@ -314,11 +314,13 @@ Known, documented deviations:
 
 ## Not ported (metadata `excluded`)
 
-Per-sample `min_trimmed_reads` filtering (data-dependent per-sample state;
-only the MultiQC fail_trimmed table is produced); `auto` strandedness
-inference without a metadata_file column (with the column, `auto` / empty
-values fall back to `config.strandedness` — no Salmon `--libType A`
-inference run); the Nextflow-param-rendered MultiQC sections
+The chain-wide per-sample `min_trimmed_reads` drop (alignment, quantification
+and all other downstream steps of failing samples remain scheduled; only the
+`fastqc_filtered_*` QC rules gate on the trimmed-read count via
+`reads_count(...) >= config.min_trimmed_reads`, requires oxo-flow >= 0.17.0);
+`auto` strandedness inference without a metadata_file column (with the column,
+`auto` / empty values fall back to `config.strandedness` — no Salmon
+`--libType A` inference run); the Nextflow-param-rendered MultiQC sections
 (`workflow_summary_mqc.yaml` / `methods_description_mqc.yaml`). User-supplied
 `bbsplit_index` / `sortmerna_index` bundles are staged like upstream
 (`.tar.gz`/`.tgz`/`.tar` archives untarred into the canonical dir, plain
