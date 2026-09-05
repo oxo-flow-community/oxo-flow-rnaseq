@@ -12,7 +12,7 @@
     "license": "MIT"
   },
   "created": "2026-08-15",
-  "updated": "2026-09-04",
+  "updated": "2026-09-05",
   "domain": "transcriptomics",
   "tags": [
     "rna-seq",
@@ -162,8 +162,7 @@
     "umitools_prepareforrsem"
   ],
   "excluded": [
-    "PREPARE_GENOME `.tar.gz` reference bundles — bbsplit / sortmerna index archives (user-supplied `bbsplit_index` / `sortmerna_index` .tar.gz/.tgz/.tar archives are untarred into the canonical results/reference/ dir like upstream UNTAR_BBSPLIT_INDEX / UNTAR_SORTMERNA_INDEX; plain directories are symlinked; the GTF preprocessing chain itself (CUSTOM_GTFFILTER with the upstream filter_gtf_needed gate, gffread GFF->GTF, additional_fasta transgenes with biotype featurecounts_group_type / gene_type, GENCODE preprocessing, .gz references) is ported as gated prepare_genome::* builder rules with canonical results/reference/ artifacts)",
-    "workflow_summary_mqc.yaml / methods_description_mqc.yaml — Nextflow-param-rendered MultiQC sections"
+    "PREPARE_GENOME `.tar.gz` reference bundles — bbsplit / sortmerna index archives (user-supplied `bbsplit_index` / `sortmerna_index` .tar.gz/.tgz/.tar archives are untarred into the canonical results/reference/ dir like upstream UNTAR_BBSPLIT_INDEX / UNTAR_SORTMERNA_INDEX; plain directories are symlinked; the GTF preprocessing chain itself (CUSTOM_GTFFILTER with the upstream filter_gtf_needed gate, gffread GFF->GTF, additional_fasta transgenes with biotype featurecounts_group_type / gene_type, GENCODE preprocessing, .gz references) is ported as gated prepare_genome::* builder rules with canonical results/reference/ artifacts)"
   ],
   "rule_count": 257,
   "tools": [
