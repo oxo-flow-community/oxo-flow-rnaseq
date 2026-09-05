@@ -21,8 +21,7 @@
 #
 # Not ported (see README fidelity table): the chain-wide per-sample
 # min_trimmed_reads drop (the fastqc_filtered_* rules DO gate on it via
-# reads_count) and the Nextflow-param-rendered workflow_summary /
-# methods_description MultiQC sections. Ported in this wave: cat_fastq multi-pair
+# reads_count). Ported in this wave: cat_fastq multi-pair
 # read merging (fastq_qc::cat_reads via input_groups), per-sample strandedness
 # (metadata_file 'strandedness' column with config fallback) and the
 # PREPARE_GENOME reference chain (CUSTOM_GTFFILTER / gffread GFF->GTF /
@@ -250,8 +249,9 @@ namespace = "quantification"
 # Workflow-level MultiQC custom content (subworkflows/local/multiqc_rnaseq).
 # One rule generates: fail_trimmed_samples_mqc.tsv, fail_mapped_samples_mqc.tsv,
 # strand_check_summary_mqc.json + strand_check_composition_mqc.json,
-# name_replacement.txt, multiqc_sample_merge.yml and
-# nf_core_rnaseq_software_mqc_versions.yml.
+# name_replacement.txt, multiqc_sample_merge.yml,
+# nf_core_rnaseq_software_mqc_versions.yml, workflow_summary_mqc.yaml and
+# methods_description_mqc.yaml.
 # ---------------------------------------------------------------------------
 
 [[rules]]
@@ -276,8 +276,11 @@ output = [
     "{config.out_dir}/multiqc/name_replacement.txt",
     "{config.out_dir}/multiqc/multiqc_sample_merge.yml",
     "{config.out_dir}/multiqc/nf_core_rnaseq_software_mqc_versions.yml",
+    "{config.out_dir}/multiqc/workflow_summary_mqc.yaml",
+    "{config.out_dir}/multiqc/methods_description_mqc.yaml",
 ]
 shell = """
+ENGINE_VERSION="$(oxo-flow --version | sed 's/^oxo-flow //')"
 python scripts/multiqc_custom_content.py \\
     --out-dir {config.out_dir}/multiqc \\
     --aligner {config.aligner} \\
@@ -290,7 +293,17 @@ python scripts/multiqc_custom_content.py \\
     --unstranded-threshold {config.unstranded_threshold} \\
     --status-header assets/multiqc/sample_status_header.txt \\
     --summary-asset assets/multiqc/strand_check_summary.yaml \\
-    --composition-asset assets/multiqc/strand_check_composition.yaml
+    --composition-asset assets/multiqc/strand_check_composition.yaml \\
+    --engine-version "$ENGINE_VERSION" \\
+    --engine-command "oxo-flow run main.oxoflow" \\
+    --config aligner={config.aligner} \\
+    --config reads_dir={config.reads_dir} \\
+    --config out_dir={config.out_dir} \\
+    --config strandedness={config.strandedness} \\
+    --config min_trimmed_reads={config.min_trimmed_reads} \\
+    --config min_mapped_reads={config.min_mapped_reads} \\
+    --config stranded_threshold={config.stranded_threshold} \\
+    --config unstranded_threshold={config.unstranded_threshold}
 """
 [rules.resources]
 threads = 1
@@ -314,6 +327,8 @@ input = [
     "{config.out_dir}/multiqc/name_replacement.txt",
     "{config.out_dir}/multiqc/multiqc_sample_merge.yml",
     "{config.out_dir}/multiqc/nf_core_rnaseq_software_mqc_versions.yml",
+    "{config.out_dir}/multiqc/workflow_summary_mqc.yaml",
+    "{config.out_dir}/multiqc/methods_description_mqc.yaml",
     "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.pca.vals_mqc.tsv",
     "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.sample.dists_mqc.tsv",
     "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.pca.vals_mqc.tsv",

@@ -11,6 +11,8 @@
 #   name_replacement.txt                fastq simpleName -> <id>_1 / <id>_2
 #   multiqc_sample_merge.yml            table_sample_merge for PE samples
 #   nf_core_rnaseq_software_mqc_versions.yml  pinned tool versions
+#   workflow_summary_mqc.yaml           "Workflow Summary" params section
+#   methods_description_mqc.yaml        "Methods Description" section
 #
 # Behaviour mirrors the upstream Groovy functions:
 #   getTrimGaloreReadsAfterFiltering (R2 report: total - length-cutoff reads)
@@ -18,12 +20,18 @@
 #   classifyStrand (provided = config strandedness; salmon is null in the port)
 #   strandSummaryCells / strandCheckSummaryYaml / strandCheckCompositionYaml
 #   multiqcNameReplacements / multiqcSampleMergeYaml / loadMultiqcAsset
+#   paramsSummaryMap / paramsSummaryMultiqc (workflow_summary_mqc.yaml)
+#   methodsDescriptionText (methods_description_mqc.yaml)
 #
 # Deviation from upstream: the merged-mode software versions file is static
 # (tools are version-pinned in envs/*.yaml) instead of runtime-collated from
-# per-process versions.yml files. workflow_summary_mqc.yaml and
-# methods_description_mqc.yaml (Nextflow-param-rendered sections) are not
-# generated; see the README fidelity table.
+# per-process versions.yml files. workflow_summary_mqc.yaml ports
+# paramsSummaryMap/paramsSummaryMultiqc against the upstream schema defaults
+# (nextflow_schema.json, inlined below), with the 'Core Nextflow options'
+# group adapted to the oxo-flow engine (engine version, invocation, launch
+# dir) and a trailing group for the port-specific strandedness / chrom_sizes
+# keys. methods_description_mqc.yaml renders the upstream template against
+# the oxo-flow engine (the port metadata has no pipeline DOI yet).
 
 import argparse
 import json
@@ -150,8 +158,337 @@ def multiqc_sample_merge_yaml_pattern(sample_id, read):
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Params summary (port of upstream paramsSummaryMap / paramsSummaryMultiqc /
+# methodsDescriptionText, nf-core/rnaseq nextflow_schema.json inlined)
 # ---------------------------------------------------------------------------
+
+N_A_SPAN = '<span style="color:#999999;">N/A</a>'
+
+# Upstream methods_description_mqc.template.yaml (nf-core/rnaseq 3.26.0),
+# verbatim including the ${workflow.*} / ${tool_*} placeholders.
+METHODS_TEMPLATE = """<h4>Methods</h4>
+<p>Data was processed using nf-core/rnaseq v${workflow.manifest.version} ${doi_text} of the nf-core collection of workflows (<a href="https://doi.org/10.1038/s41587-020-0439-x">Ewels <em>et al.</em>, 2020</a>), utilising reproducible software environments from the Bioconda (<a href="https://doi.org/10.1038/s41592-018-0046-7">Grüning <em>et al.</em>, 2018</a>) and Biocontainers (<a href="https://doi.org/10.1093/bioinformatics/btx192">da Veiga Leprevost <em>et al.</em>, 2017</a>) projects.</p>
+<p>The pipeline was executed with Nextflow v${workflow.nextflow.version} (<a href="https://doi.org/10.1038/nbt.3820">Di Tommaso <em>et al.</em>, 2017</a>) with the following command:</p>
+<pre><code>${workflow.commandLine}</code></pre>
+<p>${tool_citations}</p>
+<h4>References</h4>
+<ul>
+  <li>Di Tommaso, P., Chatzou, M., Floden, E. W., Barja, P. P., Palumbo, E., &amp; Notredame, C. (2017). Nextflow enables reproducible computational workflows. Nature Biotechnology, 35(4), 316-319. doi: <a href="https://doi.org/10.1038/nbt.3820">10.1038/nbt.3820</a></li>
+  <li>Ewels, P. A., Peltzer, A., Fillinger, S., Patel, H., Alneberg, J., Wilm, A., Garcia, M. U., Di Tommaso, P., &amp; Nahnsen, S. (2020). The nf-core framework for community-curated bioinformatics pipelines. Nature Biotechnology, 38(3), 276-278. doi: <a href="https://doi.org/10.1038/s41587-020-0439-x">10.1038/s41587-020-0439-x</a></li>
+  <li>Grüning, B., Dale, R., Sjödin, A., Chapman, B. A., Rowe, J., Tomkins-Tinch, C. H., Valieris, R., Köster, J., &amp; Bioconda Team. (2018). Bioconda: sustainable and comprehensive software distribution for the life sciences. Nature Methods, 15(7), 475–476. doi: <a href="https://doi.org/10.1038/s41592-018-0046-7">10.1038/s41592-018-0046-7</a></li>
+  <li>da Veiga Leprevost, F., Grüning, B. A., Alves Aflitos, S., Röst, H. L., Uszkoreit, J., Barsnes, H., Vaudel, M., Moreno, P., Gatto, L., Weber, J., Bai, M., Jimenez, R. C., Sachsenberg, T., Pfeuffer, J., Vera Alvarez, R., Griss, J., Nesvizhskii, A. I., &amp; Perez-Riverol, Y. (2017). BioContainers: an open-source and community-driven framework for software standardization. Bioinformatics (Oxford, England), 33(16), 2580–2582. doi: <a href="https://doi.org/10.1093/bioinformatics/btx192">10.1093/bioinformatics/btx192</a></li>
+  ${tool_bibliography}
+</ul>
+<div class="alert alert-info">
+  <h5>Notes:</h5>
+  <ul>
+    ${nodoi_text}
+    <li>The command above does not include parameters contained in any configs or profiles that may have been used. Ensure the config file is also uploaded with your publication!</li>
+    <li>You should also cite all software used within this run. Check the "Software Versions" of this report to get version information.</li>
+  </ul>
+</div>"""
+
+
+def parse_bool(text):
+    """CLI config values arrive as strings; bool flags render lowercase."""
+    return text == "true"
+
+
+def groovy_to_string(value):
+    """Render a value the way Groovy's GString interpolation would."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+SCHEMA_GROUPS = [
+    ("Input/output options", [
+        ("input", "string", None),
+        ("outdir", "string", None),
+        ("email", "string", None),
+        ("multiqc_title", "string", None),
+    ]),
+    ("Reference genome options", [
+        ("genome", "string", None),
+        ("fasta", "string", None),
+        ("gtf", "string", None),
+        ("gff", "string", None),
+        ("gene_bed", "string", None),
+        ("transcript_fasta", "string", None),
+        ("additional_fasta", "string", None),
+        ("splicesites", "string", None),
+        ("star_index", "string", None),
+        ("hisat2_index", "string", None),
+        ("rsem_index", "string", None),
+        ("salmon_index", "string", None),
+        ("kallisto_index", "string", None),
+        ("bowtie2_index", "string", None),
+        ("hisat2_build_memory", "string", "200.GB"),
+        ("gencode", "boolean", None),
+        ("prokaryotic", "boolean", None),
+        ("gffread_transcript_fasta", "boolean", None),
+        ("gtf_extra_attributes", "string", "gene_name"),
+        ("gtf_group_features", "string", "gene_id"),
+        ("featurecounts_group_type", "string", "gene_biotype"),
+        ("featurecounts_feature_type", "string", "exon"),
+        ("igenomes_ignore", "boolean", None),
+        ("arm", "boolean", None),
+        ("igenomes_base", "string", "s3://ngi-igenomes/igenomes/"),
+    ]),
+    ("Read trimming options", [
+        ("trimmer", "string", "trimgalore"),
+        ("extra_trimgalore_args", "string", None),
+        ("extra_fastp_args", "string", None),
+        ("min_trimmed_reads", "integer", 10000),
+    ]),
+    ("Read filtering options", [
+        ("bbsplit_fasta_list", "string", None),
+        ("bbsplit_index", "string", None),
+        ("sortmerna_index", "string", None),
+        ("remove_ribo_rna", "boolean", None),
+        ("ribo_removal_tool", "string", "sortmerna"),
+        ("use_gpu_ribodetector", "boolean", None),
+        ("ribo_database_manifest", "string", "${projectDir}/workflows/rnaseq/assets/rrna-db-defaults.txt"),
+    ]),
+    ("UMI options", [
+        ("with_umi", "boolean", None),
+        ("umi_dedup_tool", "string", "umitools"),
+        ("umitools_extract_method", "string", "string"),
+        ("umitools_bc_pattern", "string", None),
+        ("umitools_bc_pattern2", "string", None),
+        ("umi_discard_read", "integer", None),
+        ("umitools_umi_separator", "string", None),
+        ("umitools_grouping_method", "string", "directional"),
+        ("umitools_dedup_stats", "boolean", None),
+        ("umitools_dedup_primary_only", "boolean", None),
+    ]),
+    ("Alignment options", [
+        ("aligner", "string", "star_salmon"),
+        ("use_sentieon_star", "boolean", None),
+        ("use_parabricks_star", "boolean", None),
+        ("gpu_container_options", "string", None),
+        ("pseudo_aligner", "string", None),
+        ("pseudo_aligner_kmer_size", "integer", 31),
+        ("bam_csi_index", "boolean", None),
+        ("star_ignore_sjdbgtf", "boolean", None),
+        ("salmon_quant_libtype", "string", None),
+        ("min_mapped_reads", "number", 5),
+        ("seq_center", "string", None),
+        ("seq_platform", "string", None),
+        ("stringtie_ignore_gtf", "boolean", None),
+        ("extra_star_align_args", "string", None),
+        ("extra_bowtie2_align_args", "string", None),
+        ("extra_salmon_quant_args", "string", None),
+        ("extra_kallisto_quant_args", "string", None),
+        ("kallisto_quant_fraglen", "integer", 200),
+        ("kallisto_quant_fraglen_sd", "integer", 200),
+        ("stranded_threshold", "number", 0.8),
+        ("unstranded_threshold", "number", 0.1),
+    ]),
+    ("Optional outputs", [
+        ("save_merged_fastq", "boolean", None),
+        ("save_umi_intermeds", "boolean", None),
+        ("save_non_ribo_reads", "boolean", None),
+        ("save_bbsplit_reads", "boolean", None),
+        ("save_reference", "boolean", None),
+        ("save_trimmed", "boolean", None),
+        ("save_align_intermeds", "boolean", None),
+        ("save_unaligned", "boolean", None),
+        ("save_kraken_assignments", "boolean", None),
+        ("save_kraken_unassigned", "boolean", None),
+    ]),
+    ("Quality Control", [
+        ("extra_fqlint_args", "string", "--disable-validator P001"),
+        ("deseq2_vst", "boolean", "true"),
+        ("rseqc_modules", "string", "bam_stat,inner_distance,infer_experiment,junction_annotation,junction_saturation,read_distribution,read_duplication"),
+        ("contaminant_screening", "string", None),
+        ("contaminant_screening_input", "string", "unmapped"),
+        ("kraken_db", "string", None),
+        ("bracken_precision", "string", "S"),
+        ("sylph_db", "string", None),
+        ("sylph_taxonomy", "string", None),
+    ]),
+    ("Process skipping options", [
+        ("skip_gtf_filter", "boolean", None),
+        ("skip_gtf_transcript_filter", "boolean", None),
+        ("skip_bbsplit", "boolean", True),
+        ("skip_umi_extract", "boolean", None),
+        ("skip_linting", "boolean", None),
+        ("skip_trimming", "boolean", None),
+        ("skip_alignment", "boolean", None),
+        ("skip_pseudo_alignment", "boolean", None),
+        ("skip_quantification_merge", "boolean", None),
+        ("skip_markduplicates", "boolean", None),
+        ("skip_bigwig", "boolean", None),
+        ("skip_stringtie", "boolean", None),
+        ("skip_fastqc", "boolean", None),
+        ("use_rustqc", "boolean", False),
+        ("skip_preseq", "boolean", True),
+        ("skip_dupradar", "boolean", None),
+        ("skip_qualimap", "boolean", None),
+        ("skip_rseqc", "boolean", None),
+        ("skip_biotype_qc", "boolean", None),
+        ("skip_deseq2_qc", "boolean", None),
+        ("skip_multiqc", "boolean", None),
+        ("skip_qc", "boolean", None),
+    ]),
+    ("Institutional config options", [
+        ("custom_config_version", "string", "master"),
+        ("custom_config_base", "string", "https://raw.githubusercontent.com/nf-core/configs/master"),
+        ("config_profile_name", "string", None),
+        ("config_profile_description", "string", None),
+        ("config_profile_contact", "string", None),
+        ("config_profile_url", "string", None),
+    ]),
+    ("Generic options", [
+        ("version", "boolean", None),
+        ("publish_dir_mode", "string", "copy"),
+        ("email_on_fail", "string", None),
+        ("plaintext_email", "boolean", None),
+        ("max_multiqc_email_size", "string", "25.MB"),
+        ("monochrome_logs", "boolean", None),
+        ("multiqc_config", "string", None),
+        ("multiqc_logo", "string", None),
+        ("multiqc_methods_description", "string", None),
+        ("validate_params", "boolean", True),
+        ("pipelines_testdata_base_path", "string", "https://raw.githubusercontent.com/nf-core/test-datasets/7f1614baeb0ddf66e60be78c3d9fa55440465ac8/"),
+        ("trace_report_suffix", "string", None),
+        ("help", "['boolean', 'string']", None),
+        ("help_full", "boolean", None),
+        ("show_hidden", "boolean", None),
+    ]),
+    ("Port options", [
+        ("strandedness", "string", None),
+        ("chrom_sizes", "string", None),
+    ]),
+]
+
+
+def params_summary_map(config, engine_version, launch_dir, command_line):
+    """Port of paramsSummaryMap: keep a param when the port config has the key
+    AND (no schema default → value non-empty/non-false; else value != default).
+    The 'Core Nextflow options' group is adapted to the oxo-flow engine:
+    engine version, launch dir, invocation command line (upstream reads
+    workflow.revision/runName/containerEngine/... which do not exist here).
+    Config values arrive as CLI strings: "true"/"false" parse to bool so the
+    false-vs-default comparison matches Groovy semantics."""
+    core = {
+        "version": engine_version,
+        "commandLine": command_line,
+        "launchDir": launch_dir,
+        "projectDir": os.path.dirname(os.path.abspath(__file__)) or ".",
+    }
+    params_summary = {"Core Nextflow options": core}
+    for group_name, group_params in SCHEMA_GROUPS:
+        sub_params = {}
+        for param, param_type, schema_value in group_params:
+            if param not in config:
+                continue
+            params_value = config[param]
+            if isinstance(params_value, str) and param_type in ("boolean", "['boolean', 'string']"):
+                if params_value in ("true", "false"):
+                    params_value = parse_bool(params_value)
+            elif param_type in ("integer", "number") and isinstance(params_value, str):
+                # CLI numerics arrive as strings; coerce so falsiness and
+                # rendering match upstream Groovy (0 → N/A span at render).
+                try:
+                    params_value = int(params_value)
+                except ValueError:
+                    try:
+                        params_value = float(params_value)
+                    except ValueError:
+                        pass
+            params_text = groovy_to_string(params_value)
+            if schema_value is not None:
+                schema_text = groovy_to_string(schema_value)
+                # $projectDir / ${projectDir} substitution quirk (upstream)
+                if param_type == "string" and (
+                    "$projectDir" in schema_text or "${projectDir}" in schema_text
+                ):
+                    sub_string = schema_text.replace("$projectDir", "").replace("${projectDir}", "")
+                    if sub_string and params_value.startswith(sub_string):
+                        schema_text = params_value
+                # $params.outdir / ${params.outdir} substitution quirk (upstream)
+                if param_type == "string" and (
+                    "$params.outdir" in schema_text or "${params.outdir}" in schema_text
+                ):
+                    sub_string = schema_text.replace("$params.outdir", "").replace("${params.outdir}", "")
+                    outdir = groovy_to_string(config.get("outdir", ""))
+                    if outdir + sub_string == params_value:
+                        schema_text = params_value
+                if params_value != schema_text:
+                    sub_params[param] = params_value
+            else:
+                # No schema default: keep unless Groovy-falsy ""/null/false.
+                # Identity checks keep numeric 0 (upstream 0 != false); the
+                # render-time ?: quirk then shows 0 as the N/A span.
+                if params_value != "" and params_value is not None and params_value is not False:
+                    sub_params[param] = params_value
+        # Groovy renders booleans as lowercase true/false in GStrings.
+        for param, value in list(sub_params.items()):
+            if isinstance(value, bool):
+                sub_params[param] = groovy_to_string(value)
+        params_summary[group_name] = sub_params
+    return params_summary
+
+
+def workflow_summary_yaml(summary_params):
+    """Port of paramsSummaryMultiqc: HTML dl rows per group, N/A span for
+    Groovy-falsy values, params sorted alphabetically within each group."""
+    summary_section = ""
+    for group, group_params in summary_params.items():
+        if not group_params:
+            continue
+        summary_section += f'    <p style="font-size:110%"><b>{group}</b></p>\n'
+        summary_section += '    <dl class="dl-horizontal">\n'
+        for param in sorted(group_params):
+            rendered = group_params[param]
+            if rendered is False:
+                rendered = "false"
+            elif not rendered:
+                rendered = N_A_SPAN
+            summary_section += f"        <dt>{param}</dt><dd><samp>{rendered}</samp></dd>\n"
+        summary_section += "    </dl>\n"
+    yaml_text = "id: 'nf-core-rnaseq-summary'\n"
+    yaml_text += "description: ' - this information is collected when the pipeline is started.'\n"
+    yaml_text += "section_name: 'nf-core/rnaseq Workflow Summary'\n"
+    yaml_text += "section_href: 'https://github.com/nf-core/rnaseq'\n"
+    yaml_text += "plot_type: 'html'\n"
+    yaml_text += "data: |\n"
+    yaml_text += summary_section
+    return yaml_text
+
+
+def methods_description_yaml(engine_version, command_line):
+    """Port of methodsDescriptionText: the upstream template rendered against
+    the oxo-flow engine (pipeline version 3.26.0, engine version, invocation).
+    The port metadata has no pipeline DOI yet, so doi_text is empty and the
+    no-DOI note is kept. tool_citations / tool_bibliography stay placeholders
+    (upstream fills them from the process directives, which the port does not
+    capture)."""
+    doi_text = ""
+    nodoi_text = '        <li>If you used nf-core/rnaseq for your analysis please cite it as above and reference the pipeline version 3.26.0.</li>\n'
+    tool_citations = ""
+    tool_bibliography = ""
+    data = METHODS_TEMPLATE
+    data = data.replace("${doi_text}", doi_text)
+    data = data.replace("${workflow.manifest.version}", "3.26.0")
+    data = data.replace("${workflow.nextflow.version}", engine_version)
+    data = data.replace("${workflow.commandLine}", command_line)
+    data = data.replace("${tool_citations}", tool_citations)
+    data = data.replace("${tool_bibliography}", tool_bibliography)
+    data = data.replace("${nodoi_text}", nodoi_text)
+    yaml_text = "id: 'nf-core-rnaseq-methods-description'\n"
+    yaml_text += "description: \"Suggested text and references to use when describing pipeline usage within the methods section of a publication.\"\n"
+    yaml_text += "section_name: 'nf-core/rnaseq Methods Description'\n"
+    yaml_text += "section_href: 'https://github.com/nf-core/rnaseq'\n"
+    yaml_text += "plot_type: 'html'\n"
+    yaml_text += "data: |\n"
+    for line in data.rstrip("\n").split("\n"):
+        yaml_text += "  " + line + "\n"
+    return yaml_text
 
 
 def main():
@@ -168,10 +505,28 @@ def main():
     parser.add_argument("--status-header", required=True)
     parser.add_argument("--summary-asset", required=True)
     parser.add_argument("--composition-asset", required=True)
+    parser.add_argument("--engine-version", required=True, help="oxo-flow engine version (upstream: workflow.nextflow.version)")
+    parser.add_argument("--engine-command", default="oxo-flow run main.oxoflow", help="invocation command line (upstream: workflow.commandLine)")
+    parser.add_argument("--config", action="append", default=[], metavar="KEY=VALUE", help="pipeline config key=value pairs for the Workflow Summary section (repeatable)")
     args = parser.parse_args()
 
     samples = sorted(s for s in args.samples.split(",") if s)
     os.makedirs(args.out_dir, exist_ok=True)
+
+    # -- workflow_summary_mqc.yaml -----------------------------------------
+    # Port config keys relevant to the upstream schema groups. Upstream
+    # renders every params entry against the schema; here the CLI passes the
+    # pipeline-relevant subset as key=value strings.
+    config = dict(kv.split("=", 1) for kv in args.config if "=" in kv)
+    summary_params = params_summary_map(
+        config, args.engine_version, os.path.abspath(os.path.join(args.out_dir, os.pardir)), args.engine_command
+    )
+    with open(os.path.join(args.out_dir, "workflow_summary_mqc.yaml"), "w") as f:
+        f.write(workflow_summary_yaml(summary_params))
+
+    # -- methods_description_mqc.yaml --------------------------------------
+    with open(os.path.join(args.out_dir, "methods_description_mqc.yaml"), "w") as f:
+        f.write(methods_description_yaml(args.engine_version, args.engine_command))
 
     # -- fail_trimmed_samples_mqc.tsv --------------------------------------
     # The R2 trimming report is parsed (upstream: trim_log[-1] for PE).
