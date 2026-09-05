@@ -319,6 +319,7 @@ conda = "envs/multiqc.yaml"
 [[rules]]
 name = "multiqc"
 description = "MultiQC report (nf-core MULTIQC merged mode, results/multiqc/{config.aligner})"
+when = "config.pseudo_aligner == \"\""
 input = [
     "{config.out_dir}/multiqc/fail_trimmed_samples_mqc.tsv",
     "{config.out_dir}/multiqc/fail_mapped_samples_mqc.tsv",
@@ -331,8 +332,6 @@ input = [
     "{config.out_dir}/multiqc/methods_description_mqc.yaml",
     "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.pca.vals_mqc.tsv",
     "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.sample.dists_mqc.tsv",
-    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.pca.vals_mqc.tsv",
-    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.sample.dists_mqc.tsv",
     "assets/multiqc/multiqc_config.yml",
 ]
 expand_inputs = [
@@ -353,6 +352,128 @@ expand_inputs = [
     # fq lint tables (raw + trimmed) — upstream nf-core stages both into
     # MultiQC; without these patterns the lint rules look disconnected in
     # the workflow graph and their tables never reach the report.
+    { pattern = "{config.out_dir}/fq_lint/raw/{sample}.fq_lint.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fq_lint/trimmed/{sample}.fq_lint.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.html", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.zip", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_2_fastqc.html", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_2_fastqc.zip", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/trim/{sample}_trimmed_1_val_1_fastqc.html", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/trim/{sample}_trimmed_1_val_1_fastqc.zip", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/trim/{sample}_trimmed_2_val_2_fastqc.html", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/fastqc/trim/{sample}_trimmed_2_val_2_fastqc.zip", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_1.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/trimgalore/{sample}_trimmed_2.fastq.gz_trimming_report.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/log/{sample}.bowtie2.log", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}/quant.sf", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.stats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.stats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.markdup.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/picard_metrics/{sample}.markdup.sorted.metrics.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/featurecounts/{sample}.featureCounts.tsv.summary", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/featurecounts/{sample}.biotype_counts_mqc.tsv", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/featurecounts/{sample}.biotype_counts_rrna_mqc.tsv", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/bam_stat/{sample}.bam_stat.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/infer_experiment/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/inner_distance/txt/{sample}.inner_distance_freq.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/log/{sample}.junction_annotation.log", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/junction_saturation/rscript/{sample}.junctionSaturation_plot.r", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/read_distribution/{sample}.read_distribution.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/rseqc/read_duplication/xls/{sample}.pos.DupRate.xls", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/dupradar/multiqc/{sample}_dup_intercept_mqc.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/dupradar/multiqc/{sample}_duprateExpDensCurve_mqc.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/qualimap/{sample}/rnaseq_qc_results.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/umitools/genomic_dedup_log/{sample}.umi_dedup.sorted.log", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.stats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.flagstat", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/samtools_stats/{sample}.umi_dedup.sorted.bam.idxstats", variables = { sample = "config.samples_list" } },
+    { pattern = "{config.out_dir}/{config.aligner}/{sample}.stat", variables = { sample = "config.samples_list" } },
+]
+output = [
+    "{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html",
+]
+shell = """
+# Stage every contributor into one flat directory so the merged MultiQC run
+# sees exactly what the upstream merged mode hands to MultiQC. Qualimap
+# results keep their <id>/ subdirectory so MultiQC names the samples <id>.
+rm -rf mqc_stage
+mkdir -p mqc_stage
+for f in {input}; do
+    case "$f" in
+        */rnaseq_qc_results.txt)
+            d="mqc_stage/$(basename "$(dirname "$f")")"
+            mkdir -p "$d"
+            cp -L "$f" "$d/"
+            ;;
+        */quant.sf)
+            # salmon quant dirs stage into <sample>/quant.sf so the merged
+            # MultiQC run picks them up per-sample (upstream merged mode).
+            d="mqc_stage/$(basename "$(dirname "$f")")"
+            mkdir -p "$d"
+            cp -L "$f" "$d/"
+            ;;
+        */kallisto_quant.log)
+            # Kallisto logs carry no per-sample filename (upstream publishes
+            # them unrenamed from the work dir), so rename on stage to
+            # <sample>.kallisto_quant.log. The MultiQC kallisto module matches
+            # by content ("[quant] finding pseudoalignments for the reads"),
+            # so the rename is safe.
+            cp -L "$f" "mqc_stage/$(basename "$(dirname "$f")").kallisto_quant.log"
+            ;;
+        *) cp -L "$f" mqc_stage/ ;;
+    esac
+done
+cd mqc_stage
+multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --filename multiqc_report.html --replace-names name_replacement.txt .
+# The aligner subdir only exists when an earlier aligner-scoped rule
+# (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
+# mkdir -p before the move (live: hisat2 multiqc lost the report).
+mkdir -p ../{config.out_dir}/multiqc/{config.aligner}
+mv multiqc_report.html ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
+cd ..
+rm -rf mqc_stage
+"""
+[rules.resources]
+threads = 1
+memory = "6G"
+[rules.environment]
+conda = "envs/multiqc.yaml"
+
+# Pseudo-alignment variant: exclusive with `multiqc` (same output path, repo
+# when-gate idiom). When config.pseudo_aligner is set, upstream also feeds the
+# pseudo-branch DESeq2 tables and the per-sample quant dirs into MultiQC
+# (results/{pseudo_aligner}/...); with the default empty pseudo_aligner those
+# channels are empty and the literal {config.pseudo_aligner} paths would be
+# unresolvable (results//deseq2_qc/...), so they live only in this variant.
+[[rules]]
+name = "multiqc_pseudo"
+description = "MultiQC report with pseudo-alignment channels (nf-core MULTIQC merged mode, results/multiqc/{config.aligner})"
+when = "config.pseudo_aligner != \"\""
+input = [
+    "{config.out_dir}/multiqc/fail_trimmed_samples_mqc.tsv",
+    "{config.out_dir}/multiqc/fail_mapped_samples_mqc.tsv",
+    "{config.out_dir}/multiqc/strand_check_summary_mqc.json",
+    "{config.out_dir}/multiqc/strand_check_composition_mqc.json",
+    "{config.out_dir}/multiqc/name_replacement.txt",
+    "{config.out_dir}/multiqc/multiqc_sample_merge.yml",
+    "{config.out_dir}/multiqc/nf_core_rnaseq_software_mqc_versions.yml",
+    "{config.out_dir}/multiqc/workflow_summary_mqc.yaml",
+    "{config.out_dir}/multiqc/methods_description_mqc.yaml",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.pca.vals_mqc.tsv",
+    "{config.out_dir}/{config.aligner}/deseq2_qc/{config.aligner}.sample.dists_mqc.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.pca.vals_mqc.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/deseq2_qc/{config.pseudo_aligner}.sample.dists_mqc.tsv",
+    "assets/multiqc/multiqc_config.yml",
+]
+expand_inputs = [
+    # Identical to `multiqc` plus the two pseudo-branch per-sample patterns
+    # (salmon quant.sf / kallisto log under {config.pseudo_aligner}/<id>/),
+    # mirroring the upstream MultiQC pseudo-alignment channels. See the
+    # `multiqc` rule for the full channel-by-channel annotation.
     { pattern = "{config.out_dir}/fq_lint/raw/{sample}.fq_lint.txt", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/fq_lint/trimmed/{sample}.fq_lint.txt", variables = { sample = "config.samples_list" } },
     { pattern = "{config.out_dir}/fastqc/raw/{sample}_raw_1_fastqc.html", variables = { sample = "config.samples_list" } },
