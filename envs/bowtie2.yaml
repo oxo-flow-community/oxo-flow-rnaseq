@@ -1,5 +1,8 @@
 # Pinned exactly to the upstream nf-core/rnaseq 3.26.0 BOWTIE2_ALIGN module
-# environment (modules/nf-core/bowtie2/align/environment.yml).
+# environment (modules/nf-core/bowtie2/align/environment.yml). seqkit is
+# additionally pinned to the upstream seqkit/replace module environment
+# (bioconda::seqkit=2.9.0): fastq_qc::bowtie2_rrna_index shells out to
+# `seqkit replace` while declaring this env.
 name: bowtie2
 channels:
   - conda-forge
@@ -8,3 +11,4 @@ dependencies:
   - bioconda::bowtie2=2.5.4
   - bioconda::htslib=1.21
   - bioconda::samtools=1.21
+  - bioconda::seqkit=2.9.0

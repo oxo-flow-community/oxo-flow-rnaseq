@@ -86,6 +86,7 @@
     "kallisto_quant_pseudo_sortmerna",
     "multiqc",
     "multiqc_custom_content",
+    "multiqc_pseudo",
     "picard_markduplicates",
     "qualimap_rnaseq",
     "rrna_fastas_prepare",
@@ -164,7 +165,7 @@
   "excluded": [
     "PREPARE_GENOME `.tar.gz` reference bundles — bbsplit / sortmerna index archives (user-supplied `bbsplit_index` / `sortmerna_index` .tar.gz/.tgz/.tar archives are untarred into the canonical results/reference/ dir like upstream UNTAR_BBSPLIT_INDEX / UNTAR_SORTMERNA_INDEX; plain directories are symlinked; the GTF preprocessing chain itself (CUSTOM_GTFFILTER with the upstream filter_gtf_needed gate, gffread GFF->GTF, additional_fasta transgenes with biotype featurecounts_group_type / gene_type, GENCODE preprocessing, .gz references) is ported as gated prepare_genome::* builder rules with canonical results/reference/ artifacts)"
   ],
-  "rule_count": 144,
+  "rule_count": 145,
   "tools": [
     "fastqc",
     "trim-galore",

@@ -80,7 +80,7 @@ The repository ships tiny synthetic fixtures for all of the above
 node capacity accordingly.
 
 **Tool delivery:** conda environments with pinned versions. Every rule
-declares `[rules.environment] conda = "envs/<tool>.yaml"` (29 environments
+declares `[rules.environment] conda = "envs/<tool>.yaml"` (31 environments
 in `envs/`), with each package version pinned exactly to the upstream
 nf-core/rnaseq 3.26.0 module environment (e.g. `star=2.7.11b`,
 `salmon=1.10.3`, `multiqc=1.33`). No containers are used — you need conda or
@@ -311,6 +311,7 @@ Known, documented deviations:
 | 25 | `kallisto` pseudo-aligner: `KALLISTO_INDEX` (`kallisto index -k 31 -i kallisto tx.fa`, process_medium) + `KALLISTO_QUANT` (process_high, `--gtf`, `--fr/--rf-stranded` from strandedness, `2> >(tee log)`) | Ported as `quantification::kallisto_index` + `kallisto_quant_pseudo` (+3 read-source variants) reusing the salmon pseudo branch's when gates; tx2gene/tximport/SE/DESeq2 pseudo rules are shared via widened when-gates with the tool label (`--quant-type`, MultiQC `KALLISTO DESeq2 ...` labels) | The port scripts (tx2gene.py / tximport.r) already handle kallisto (`abundance.tsv`, `dropInfReps=TRUE`); `-k` comes from `config.pseudo_aligner_kmer_size` (upstream default 31); extra_kallisto_quant_args stays at the upstream default (null) |
 | 26 | `KALLISTO_QUANT` logs: upstream publishes the work-dir `{prefix}.log` (the `.run_info.json` and `.log` copies are unpublished, saveAs null) and feeds MultiQC from the work dir | The port declares `{pseudo_aligner}/<id>/kallisto_quant.log` as a rule output and stages it into MultiQC as `<id>.kallisto_quant.log` | oxo-flow has no work dirs, so the log must be a declared output to reach MultiQC; the MultiQC kallisto module matches by content ("[quant] finding pseudoalignments for the reads"), so the per-sample rename is safe |
 | 27 | `DESEQ2_QC_PSEUDO` MultiQC labels come from `params.pseudo_aligner` (SALMON / KALLISTO) | The port derives the label from `config.pseudo_aligner` at render time (`tr [:lower:] [:upper:]`) | Config-derived label — same value as upstream's param-derived label |
+| 28 | `PREPARE_GENOME` output (transgenes from `additional_fasta` included) feeds `STAR_GENOMEGENERATE`, so the upstream STAR index contains the transgene sequences | The `[[references]]` `star_index` builder in `main.oxoflow` builds from the raw fixture paths (`config.fasta` / `config.gtf`) | `[[references]]` build before the rule DAG and cannot consume `prepare_genome` rule outputs (see `modules/prepare_genome.oxoflow` header); with `additional_fasta` set the STAR index lacks the transgene contigs while the other index builders (HISAT2 / RSEM / Salmon) use the processed `results/reference/` artifacts — point `config.star_index` at an externally built index if transgenes must be in the STAR index |
 
 ## Not ported (metadata `excluded`)
 
