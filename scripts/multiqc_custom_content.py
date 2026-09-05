@@ -11,6 +11,8 @@
 #   name_replacement.txt                fastq simpleName -> <id>_1 / <id>_2
 #   multiqc_sample_merge.yml            table_sample_merge for PE samples
 #   nf_core_rnaseq_software_mqc_versions.yml  pinned tool versions
+#   workflow_summary_mqc.yaml           "Workflow Summary" params section
+#   methods_description_mqc.yaml        "Methods Description" section
 #
 # Behaviour mirrors the upstream Groovy functions:
 #   getTrimGaloreReadsAfterFiltering (R2 report: total - length-cutoff reads)
@@ -18,12 +20,18 @@
 #   classifyStrand (provided = config strandedness; salmon is null in the port)
 #   strandSummaryCells / strandCheckSummaryYaml / strandCheckCompositionYaml
 #   multiqcNameReplacements / multiqcSampleMergeYaml / loadMultiqcAsset
+#   paramsSummaryMap / paramsSummaryMultiqc (workflow_summary_mqc.yaml)
+#   methodsDescriptionText (methods_description_mqc.yaml)
 #
 # Deviation from upstream: the merged-mode software versions file is static
 # (tools are version-pinned in envs/*.yaml) instead of runtime-collated from
-# per-process versions.yml files. workflow_summary_mqc.yaml and
-# methods_description_mqc.yaml (Nextflow-param-rendered sections) are not
-# generated; see the README fidelity table.
+# per-process versions.yml files. workflow_summary_mqc.yaml ports
+# paramsSummaryMap/paramsSummaryMultiqc against the upstream schema defaults
+# (nextflow_schema.json, inlined below), with the 'Core Nextflow options'
+# group adapted to the oxo-flow engine (engine version, invocation, launch
+# dir) and a trailing group for the port-specific strandedness / chrom_sizes
+# keys. methods_description_mqc.yaml renders the upstream template against
+# the oxo-flow engine (the port metadata has no pipeline DOI yet).
 
 import argparse
 import json
