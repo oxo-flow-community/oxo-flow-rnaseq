@@ -156,7 +156,10 @@ skip_bbsplit = true
 bbsplit_fasta_list = ""
 save_bbsplit_reads = false
 # Ribosomal RNA removal (upstream: --remove_ribo_rna / --ribo_removal_tool /
-# --ribo_database_manifest / --save_non_ribo_reads; same defaults). The
+# --ribo_database_manifest / --save_non_ribo_reads; same defaults). Only
+# 'sortmerna' and 'bowtie2' are wired; other upstream-valid values (e.g.
+# ribodetector) silently leave rRNA removal off with remove_ribo_rna=true —
+# set remove_ribo_rna=false if you are not using sortmerna/bowtie2. The
 # manifest is one fasta path per line; .gz entries are gunzipped before use.
 remove_ribo_rna = false
 ribo_removal_tool = "sortmerna"
@@ -167,8 +170,8 @@ save_non_ribo_reads = false
 # --sortmerna_index). Empty index keys are auto-built by when-gated builder
 # rules in modules/alignment.oxoflow / quantification.oxoflow from the
 # shipped fixtures when the branch is enabled (like star_index); a
-# user-supplied path is untarred (.tar.gz/.tgz/.tar archives, like upstream
-# UNTAR_*_INDEX) or symlinked (directories) in instead.
+# user-supplied path is untarred (upstream UNTAR_*_INDEX accepts `.tar.gz`
+# only; the port additionally accepts `.tgz`/`.tar`) or symlinked (directories) or symlinked (directories) in instead.
 skip_alignment = false
 rsem_index = ""
 hisat2_index = ""
