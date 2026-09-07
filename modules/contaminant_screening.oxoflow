@@ -37,6 +37,21 @@ description = "KRAKEN2: taxonomic classification of contaminant reads (upstream 
 shell = """
 set -euo pipefail
 mkdir -p {config.out_dir}/contaminant_screening/kraken2
+# save_kraken_assignments / save_kraken_unassigned mirror the upstream
+# module's readclassification_option / unclassified_option (both default
+# false = --output /dev/null, no --unclassified-out).
+# upstream single-end is not modelled (the port is paired-end only), so
+# --unclassified-out names the paired '#template' form.
+if [ "{config.save_kraken_assignments}" = "true" ]; then
+    READCLS="--output {sample}.kraken2.classifiedreads.txt"
+else
+    READCLS="--output /dev/null"
+fi
+if [ "{config.save_kraken_unassigned}" = "true" ]; then
+    UNCLASS="--unclassified-out {sample}.kraken2.unclassified#.fastq.gz"
+else
+    UNCLASS=""
+fi
 kraken2 \\
     --db {input[2]} \\
     --threads {effective_threads} \\
@@ -44,7 +59,8 @@ kraken2 \\
     --gzip-compressed \\
     --confidence 0.05 \\
     --minimum-hit-groups 3 \\
-    --output /dev/null \\
+    $READCLS \\
+    $UNCLASS \\
     {input[0]} {input[1]}
 mv {sample}.kraken2.report.txt {config.out_dir}/contaminant_screening/kraken2/
 """
