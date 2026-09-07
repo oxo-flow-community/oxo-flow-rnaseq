@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 SEQKIT_STATS module
+# environment (modules/nf-core/seqkit/stats/environment.yml).
+name: seqkit
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::seqkit=2.9.0

@@ -910,3 +910,189 @@ threads = 2
 memory = "12G"
 [rules.environment]
 conda = "envs/fastqc.yaml"
+
+# SEQKIT_STATS (ribodetector tool): seqkit stats --all on the filtered reads
+# feeds getReadLengthFromSeqkitStats() inside the RIBODETECTOR rule (the
+# average read length selects the classifier model). process_low, prefix <id>.
+[[rules]]
+name = "seqkit_stats"
+description = "Collect per-file read stats with seqkit (nf-core SEQKIT_STATS, --tabular --all, prefix <id>) feeding the ribodetector read-length estimate"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+]
+output = ["{config.out_dir}/ribodetector/{sample}.seqkit_stats.tsv"]
+shell = """
+seqkit stats --tabular --threads 2 --all {input[0]} {input[1]} > {output[0]}
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector' && config.skip_bbsplit"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/seqkit.yaml"
+
+# SEQKIT_STATS on BBSplit primary reads (BBSplit on): identical outputs to
+# seqkit_stats; the exclusive when gate picks exactly one read source per
+# config state.
+[[rules]]
+name = "seqkit_stats_bbsplit"
+description = "Collect per-file read stats with seqkit on BBSplit primary reads (nf-core SEQKIT_STATS, --tabular --all, prefix <id>)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+]
+output = ["{config.out_dir}/ribodetector/{sample}.seqkit_stats.tsv"]
+shell = """
+seqkit stats --tabular --threads 2 --all {input[0]} {input[1]} > {output[0]}
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector' && !config.skip_bbsplit"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/seqkit.yaml"
+
+# RIBODETECTOR (CPU build): ML-based rRNA removal with no reference FASTA —
+# rrna_fastas/sortmerna_index/bowtie2_rrna_index are not consumed on this
+# branch. The classifier model is selected by average read length, computed
+# here with the upstream getReadLengthFromSeqkitStats() algorithm: mean of
+# the avg_len column across all data rows, Math.round as an int, fallback
+# 100 when the stats table has <2 lines or no avg_len column.
+# ribodetector_cpu vs ribodetector (GPU) is the documented divergence: the
+# port always uses the CPU binary (use_gpu_ribodetector does not exist).
+# Prefix <id>; outputs <id>_1/_2.nonrna.1/2.fastq.gz like the sibling tools.
+[[rules]]
+name = "ribodetector"
+description = "Remove rRNA reads with Ribodetector (CPU) on trimmed reads (nf-core RIBODETECTOR, model auto-selected from the seqkit stats average read length, prefix <id>)"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.out_dir}/ribodetector/{sample}.seqkit_stats.tsv",
+]
+output = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}.log",
+]
+shell = """
+# getReadLengthFromSeqkitStats(): mean of the avg_len column, Math.round,
+# fallback 100 for <2 lines or a missing column.
+LENGTH=$(
+    awk -F '\\t' 'NR==1 { for (i = 1; i <= NF; i++) if ($i == "avg_len") col = i }
+        NR > 1 && col { sum += $col; n++ }
+        END { if (col && n) printf "%d", (sum + n / 2) / n; else print 100 }' \\
+        {input[2]}
+)
+ribodetector_cpu \\
+    -i {input[0]} {input[1]} \\
+    -o {sample}_1.nonrna.1.fastq.gz {sample}_2.nonrna.2.fastq.gz \\
+    -l "$LENGTH" \\
+    -t 6 \\
+    --log {sample}.log
+mkdir -p {config.out_dir}/ribodetector
+mv {sample}_1.nonrna.1.fastq.gz {config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz
+mv {sample}_2.nonrna.2.fastq.gz {config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz
+mv {sample}.log {config.out_dir}/ribodetector/{sample}.log
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector' && config.skip_bbsplit"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/ribodetector.yaml"
+
+# RIBODETECTOR on BBSplit primary reads (BBSplit on): identical outputs to
+# ribodetector; the exclusive when gate picks exactly one read source per
+# config state.
+[[rules]]
+name = "ribodetector_bbsplit"
+description = "Remove rRNA reads with Ribodetector (CPU) on BBSplit primary reads (nf-core RIBODETECTOR, model auto-selected from the seqkit stats average read length, prefix <id>)"
+input = [
+    "{config.out_dir}/bbsplit/{sample}_primary_1.fastq.gz",
+    "{config.out_dir}/bbsplit/{sample}_primary_2.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}.seqkit_stats.tsv",
+]
+output = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}.log",
+]
+shell = """
+# getReadLengthFromSeqkitStats(): mean of the avg_len column, Math.round,
+# fallback 100 for <2 lines or a missing column.
+LENGTH=$(
+    awk -F '\\t' 'NR==1 { for (i = 1; i <= NF; i++) if ($i == "avg_len") col = i }
+        NR > 1 && col { sum += $col; n++ }
+        END { if (col && n) printf "%d", (sum + n / 2) / n; else print 100 }' \\
+        {input[2]}
+)
+ribodetector_cpu \\
+    -i {input[0]} {input[1]} \\
+    -o {sample}_1.nonrna.1.fastq.gz {sample}_2.nonrna.2.fastq.gz \\
+    -l "$LENGTH" \\
+    -t 6 \\
+    --log {sample}.log
+mkdir -p {config.out_dir}/ribodetector
+mv {sample}_1.nonrna.1.fastq.gz {config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz
+mv {sample}_2.nonrna.2.fastq.gz {config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz
+mv {sample}.log {config.out_dir}/ribodetector/{sample}.log
+"""
+when = "config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector' && !config.skip_bbsplit"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/ribodetector.yaml"
+
+# FQ_LINT_AFTER_RIBO_REMOVAL (ribodetector tool)
+[[rules]]
+name = "fq_lint_rrna_ribodetector"
+description = "Lint Ribodetector-filtered FASTQs with fq (nf-core FQ_LINT_AFTER_RIBO_REMOVAL, publish fq_lint/ribodetector)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+]
+output = ["{config.out_dir}/fq_lint/ribodetector/{sample}.fq_lint.txt"]
+shell = """
+fq lint {config.extra_fqlint_args} {input[0]} {input[1]} > {output[0]}
+"""
+when = "!config.skip_linting && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector'"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fq.yaml"
+
+# FASTQC_FILTERED (ribodetector tool)
+[[rules]]
+name = "fastqc_filtered_ribodetector"
+description = "FastQC on Ribodetector-filtered reads (nf-core FASTQC_FILTERED, prefix <id>_filtered)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+]
+output = [
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_1_fastqc.zip",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.html",
+    "{config.out_dir}/fastqc/filtered/{sample}_filtered_2_fastqc.zip",
+]
+shell = """
+printf "%s %s\\n" {input[0]} {sample}_filtered_1.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+printf "%s %s\\n" {input[1]} {sample}_filtered_2.fastq.gz | while read old_name new_name; do
+    [ -f "$new_name" ] || ln -s $old_name $new_name
+done
+fastqc --quiet --threads 2 --memory 6000 {sample}_filtered_1.fastq.gz {sample}_filtered_2.fastq.gz
+mkdir -p {config.out_dir}/fastqc/filtered
+mv {sample}_filtered_1_fastqc.html {sample}_filtered_1_fastqc.zip {config.out_dir}/fastqc/filtered/
+mv {sample}_filtered_2_fastqc.html {sample}_filtered_2_fastqc.zip {config.out_dir}/fastqc/filtered/
+"""
+when = "!config.skip_fastqc && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector' && reads_count('{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz') >= config.min_trimmed_reads"
+[rules.resources]
+threads = 2
+memory = "12G"
+[rules.environment]
+conda = "envs/fastqc.yaml"

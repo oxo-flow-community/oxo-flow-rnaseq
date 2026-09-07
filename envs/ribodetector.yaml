@@ -1,0 +1,8 @@
+# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 RIBODETECTOR module
+# environment (modules/nf-core/ribodetector/environment.yml).
+name: ribodetector
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::ribodetector=0.3.3
