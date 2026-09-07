@@ -68,4 +68,47 @@ rm -f .ribodetector-test-tmp.oxoflow
 trap - EXIT
 echo "  seqkit_stats (line $seq_line) < ribodetector (line $rd_line); sortmerna off"
 
+echo "==> Contaminant screening branch: dry-run with contaminant_screening"
+# Upstream workflows/rnaseq/main.nf: params.contaminant_screening in
+# ['kraken2','kraken2_bracken','sylph'] (default null) selects the branch,
+# reading post-trim reads (params.contaminant_screening_input; the port
+# fixes it to 'trimmed' — STAR unmapped-reads emission is not ported).
+sed -e 's/^contaminant_screening = ""$/contaminant_screening = "kraken2_bracken"/' \
+    -e 's/^kraken_db = ""$/kraken_db = "test\/fixtures\/db"/' \
+    main.oxoflow > .cs-test-tmp.oxoflow
+trap 'rm -f .cs-test-tmp.oxoflow' EXIT
+"$OXO" dry-run .cs-test-tmp.oxoflow --samples first:1 > /tmp/oxo-dryrun-cs-$$.txt 2>&1
+grep -qE "^  [0-9]+\. contaminant::kraken2_samples[^ ]*  \[run" /tmp/oxo-dryrun-cs-$$.txt \
+    || { echo "contaminant branch: kraken2 not scheduled"; exit 1; }
+grep -qE "^  [0-9]+\. contaminant::bracken_samples[^ ]*  \[run" /tmp/oxo-dryrun-cs-$$.txt \
+    || { echo "contaminant branch: bracken not scheduled"; exit 1; }
+if grep -qE "^  [0-9]+\. (bam_qc|fastq_qc)::(sortmerna|bbsplit)[^ ]*  \[run" /tmp/oxo-dryrun-cs-$$.txt; then
+    echo "contaminant branch: unexpected ribo/bbsplit rule scheduled"; exit 1
+fi
+rm -f .cs-test-tmp.oxoflow
+trap - EXIT
+
+# sylph variant — sylph_db + sylph_taxonomy flip the branch to SYLPH_PROFILE
+# + SYLPHTAX_TAXPROF and kraken2 must not schedule.
+sed -e 's/^contaminant_screening = ""$/contaminant_screening = "sylph"/' \
+    -e 's/^sylph_db = ""$/sylph_db = "test\/fixtures\/sylph.db"/' \
+    -e 's/^sylph_taxonomy = ""$/sylph_taxonomy = "test\/fixtures\/taxonomy.json"/' \
+    main.oxoflow > .cs-sylph-test-tmp.oxoflow
+trap 'rm -f .cs-sylph-test-tmp.oxoflow' EXIT
+"$OXO" dry-run .cs-sylph-test-tmp.oxoflow --samples first:1 > /tmp/oxo-dryrun-cs-sylph-$$.txt 2>&1
+grep -qE "^  [0-9]+\. contaminant::sylph_profile_samples[^ ]*  \[run" /tmp/oxo-dryrun-cs-sylph-$$.txt \
+    || { echo "contaminant branch (sylph): sylph_profile not scheduled"; exit 1; }
+grep -qE "^  [0-9]+\. contaminant::sylphtax_taxprof_samples[^ ]*  \[run" /tmp/oxo-dryrun-cs-sylph-$$.txt \
+    || { echo "contaminant branch (sylph): sylphtax_taxprof not scheduled"; exit 1; }
+if grep -qE "^  [0-9]+\. contaminant::kraken2_samples[^ ]*  \[run" /tmp/oxo-dryrun-cs-sylph-$$.txt; then
+    echo "contaminant branch (sylph): kraken2 unexpectedly scheduled"; exit 1
+fi
+rm -f .cs-sylph-test-tmp.oxoflow
+trap - EXIT
+# Default config: no screening rule may run (guard against regressions).
+if grep -qE "^  [0-9]+\. contaminant::(kraken2|bracken|sylph)[^ ]*  \[run" /tmp/oxo-dryrun-$$.txt; then
+    echo "contaminant branch: rule scheduled with default config"; exit 1
+fi
+echo "  kraken2_bracken + sylph branches on when configured; off by default"
+
 echo "PASS"

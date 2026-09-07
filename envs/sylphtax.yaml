@@ -1,0 +1,9 @@
+---
+# Environment for sylph-tax — pinned exactly to the upstream
+# nf-core/rnaseq 3.26.0 module environment.
+name: sylph-tax
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::sylph-tax=1.2.0

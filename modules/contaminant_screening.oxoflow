@@ -1,0 +1,158 @@
+# Contaminant screening (nf-core/rnaseq 3.26.0) — the optional taxonomic QC
+# branch of the workflow (upstream workflows/rnaseq/main.nf:
+#   params.contaminant_screening in ['kraken2', 'kraken2_bracken', 'sylph']
+#   and !params.skip_qc, reading ch_contaminant_sequences selected by
+#   params.contaminant_screening_input.
+# The port gates the whole branch on config.contaminant_screening and reads
+# the post-trim reads (contaminant_screening_input = "trimmed" — upstream
+# also supports 'unmapped', STAR's Unmapped.out reads, which the port does
+# not emit; the README fidelity table records the divergence).
+# Databases are user-provided via config.kraken_db / config.sylph_db /
+# config.sylph_taxonomy (kraken/build + sylph download + sylph-tax build) —
+# the engine cannot download them mid-run, matching the port's GTDB/geNomad
+# convention (fail fast when empty).
+
+[workflow]
+name = "oxo-flow-rnaseq-contaminant-screening"
+description = "nf-core/rnaseq 3.26.0 contaminant screening branch (Kraken2/Bracken or Sylph; gated on config.contaminant_screening)"
+
+# ---------------------------------------------------------------------------
+# KRAKEN2 (kraken2 2.1.6). Upstream call: kraken2 --db <db> --threads N
+# --report <prefix>.kraken2.report.txt --gzip-compressed
+# [--output <prefix>.kraken2.classifiedreads.txt | --output /dev/null]
+# [--unclassified-out ...]. Report feeds MultiQC.
+# ---------------------------------------------------------------------------
+[[rules]]
+name = "kraken2"
+when = "config.contaminant_screening == 'kraken2' || config.contaminant_screening == 'kraken2_bracken'"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.kraken_db}",
+]
+output = [
+    "{config.out_dir}/contaminant_screening/kraken2/{sample}.kraken2.report.txt",
+]
+description = "KRAKEN2: taxonomic classification of contaminant reads (upstream KRAKEN2; config.kraken_db = Kraken2 DB dir)"
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/contaminant_screening/kraken2
+kraken2 \\
+    --db {input[2]} \\
+    --threads {effective_threads} \\
+    --report {sample}.kraken2.report.txt \\
+    --gzip-compressed \\
+    --confidence 0.05 \\
+    --minimum-hit-groups 3 \\
+    --output /dev/null \\
+    {input[0]} {input[1]}
+mv {sample}.kraken2.report.txt {config.out_dir}/contaminant_screening/kraken2/
+"""
+
+[rules.resources]
+threads = 8
+memory = "24G"
+
+[rules.environment]
+conda = "envs/kraken2.yaml"
+
+# ---------------------------------------------------------------------------
+# BRACKEN (bracken 3.1). Upstream call:
+#   bracken -d <db> -i <kraken report> -o <prefix>.tsv
+# ---------------------------------------------------------------------------
+[[rules]]
+name = "bracken"
+when = "config.contaminant_screening == 'kraken2_bracken'"
+input = [
+    "{config.out_dir}/contaminant_screening/kraken2/{sample}.kraken2.report.txt",
+    "{config.kraken_db}",
+]
+output = ["{config.out_dir}/contaminant_screening/bracken/{sample}.tsv"]
+description = "BRACKEN: re-estimate abundace at the genus level from Kraken2 report (upstream BRACKEN; config.kraken_db)"
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/contaminant_screening/bracken
+bracken \\
+    -d {input[1]} \\
+    -i {input[0]} \\
+    -o {sample}.tsv
+mv {sample}.tsv {config.out_dir}/contaminant_screening/bracken/
+"""
+
+[rules.resources]
+threads = 2
+memory = "12G"
+
+[rules.environment]
+conda = "envs/bracken.yaml"
+
+# ---------------------------------------------------------------------------
+# SYLPH_PROFILE (sylph 0.9.0). Upstream call:
+#   sylph profile -t N <db> -1 R1 -2 R2 -o <prefix>.tsv
+# (meta.single_end variant: sylph profile -t N <db> <reads> -o <prefix>.tsv)
+# config.sylph_db may hold several comma-separated dbs (upstream splits and
+# passes each; the port takes the first, documenting multi-db as divergence).
+# ---------------------------------------------------------------------------
+[[rules]]
+name = "sylph_profile"
+when = "config.contaminant_screening == 'sylph'"
+input = [
+    "{config.out_dir}/trimgalore/{sample}_trimmed_1_val_1.fq.gz",
+    "{config.out_dir}/trimgalore/{sample}_trimmed_2_val_2.fq.gz",
+    "{config.sylph_db}",
+]
+output = ["{config.out_dir}/contaminant_screening/sylph/{sample}.tsv"]
+description = "SYLPH_PROFILE: profile metagenome composition against Sylph database (upstream SYLPH_PROFILE; config.sylph_db)"
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/contaminant_screening/sylph
+sylph profile \\
+    -t {effective_threads} \\
+    -c 100 \\
+    -u \\
+    {input[2]} \\
+    -1 {input[0]} \\
+    -2 {input[1]} \\
+    -o {sample}.tsv
+mv {sample}.tsv {config.out_dir}/contaminant_screening/sylph/
+"""
+
+[rules.resources]
+threads = 8
+memory = "24G"
+
+[rules.environment]
+conda = "envs/sylph.yaml"
+
+# ---------------------------------------------------------------------------
+# SYLPHTAX_TAXPROF (sylph-tax 1.2.0). Upstream call:
+#   sylph-tax taxprof <taxonomy-config> <profile.tsv> -o <prefix>.taxprof.tsv
+# config.sylph_taxonomy = taxonomy config.json (sylph-tax build --output).
+# ---------------------------------------------------------------------------
+[[rules]]
+name = "sylphtax_taxprof"
+when = "config.contaminant_screening == 'sylph'"
+input = [
+    "{config.out_dir}/contaminant_screening/sylph/{sample}.tsv",
+    "{config.sylph_taxonomy}",
+]
+output = ["{config.out_dir}/contaminant_screening/sylph/{sample}.sylphmpa"]
+description = "SYLPHTAX_TAXPROF: taxonomic profiling from Sylph profile (upstream SYLPHTAX_TAXPROF; config.sylph_taxonomy = taxonomy config.json)"
+shell = """
+set -euo pipefail
+mkdir -p {config.out_dir}/contaminant_screening/sylph
+export SYLPH_TAXONOMY_CONFIG="{config.sylph_taxonomy}"
+sylph-tax \\
+    taxprof \\
+    {input[0]} \\
+    -t {config.sylph_taxonomy}
+mv *.sylphmpa {sample}.sylphmpa
+mv {sample}.sylphmpa {config.out_dir}/contaminant_screening/sylph/
+"""
+
+[rules.resources]
+threads = 2
+memory = "12G"
+
+[rules.environment]
+conda = "envs/sylphtax.yaml"

@@ -91,6 +91,21 @@ strandedness = "unstranded"
 # transcriptome with Bowtie2 and quantifies the orig_bam with Salmon
 # (upstream ALIGN_BOWTIE2 -> QUANTIFY_BAM_SALMON).
 aligner = "star_salmon"
+# Contaminant screening (upstream --contaminant_screening, default null = off;
+# "kraken2" | "kraken2_bracken" | "sylph"). The port gates the whole branch on
+# this key (module modules/contaminant_screening.oxoflow). The upstream
+# contaminant_screening_input defaults to 'unmapped' (STAR unaligned reads);
+# the port supports 'trimmed' (post-trim reads — no STAR re-flag needed;
+# documented divergence, the upstream alternative that avoids
+# --outReadsUnmapped), while 'unmapped' is not ported (the port's star_align
+# rules do not emit STAR's Unmapped.out reads).
+contaminant_screening = ""
+contaminant_screening_input = "trimmed"
+kraken_db = ""
+save_kraken_assignments = false
+save_kraken_unassigned = false
+sylph_db = ""
+sylph_taxonomy = ""
 # Thresholds (upstream params with the same defaults).
 min_trimmed_reads = 10000
 min_mapped_reads = 5
@@ -249,6 +264,10 @@ namespace = "bigwig"
 [[include]]
 path = "modules/quantification.oxoflow"
 namespace = "quantification"
+
+[[include]]
+path = "modules/contaminant_screening.oxoflow"
+namespace = "contaminant"
 
 # ---------------------------------------------------------------------------
 # Workflow-level MultiQC custom content (subworkflows/local/multiqc_rnaseq).
