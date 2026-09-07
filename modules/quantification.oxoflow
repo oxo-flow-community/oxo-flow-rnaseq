@@ -1315,6 +1315,44 @@ memory = "72G"
 conda = "envs/kallisto.yaml"
 
 [[rules]]
+name = "kallisto_quant_pseudo_ribodetector"
+description = "Kallisto pseudo-alignment of ribodetector-filtered reads (nf-core KALLISTO_QUANT, pseudo mode)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/reference/kallisto",
+    "{config.out_dir}/reference/gtf.processed.gtf",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/abundance.tsv",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/abundance.h5",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/run_info.json",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/kallisto_quant.log",
+]
+shell = """
+set -euo pipefail
+STRANDED=""
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRANDED="--fr-stranded"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRANDED="--rf-stranded"; fi
+mkdir -p {config.out_dir}/{config.pseudo_aligner}/{sample}
+kallisto quant \\
+    --threads 12 \\
+    --index {input[2]} \\
+    --gtf {input[3]} \\
+    $STRANDED \\
+    -o {config.out_dir}/{config.pseudo_aligner}/{sample} \\
+    {input[0]} {input[1]} 2> >(tee -a {config.out_dir}/{config.pseudo_aligner}/{sample}/kallisto_quant.log >&2)
+"""
+when = "config.pseudo_aligner == 'kallisto' && !config.skip_pseudo_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/kallisto.yaml"
+
+[[rules]]
 name = "salmon_quant_pseudo"
 description = "Salmon pseudo-alignment of trimmed reads (nf-core SALMON_QUANT, pseudo mode, index + decoys)"
 input = [
@@ -1479,13 +1517,54 @@ memory = "36G"
 conda = "envs/salmon.yaml"
 
 [[rules]]
+name = "salmon_quant_pseudo_ribodetector"
+description = "Salmon pseudo-alignment of ribodetector-filtered reads (nf-core SALMON_QUANT, pseudo mode)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/reference/salmon_index",
+    "{config.out_dir}/reference/gtf.processed.gtf",
+]
+output = [
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/quant.genes.sf",
+    "{config.out_dir}/{config.pseudo_aligner}/{sample}/logs/salmon_quant.log",
+]
+shell = """
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+case "$STRANDEDNESS" in
+    forward) LIBTYPE=ISF ;;
+    reverse) LIBTYPE=ISR ;;
+    *) LIBTYPE=IU ;;
+esac
+if [ -n "{config.salmon_quant_libtype}" ]; then
+    LIBTYPE="{config.salmon_quant_libtype}"
+fi
+salmon quant \\
+    --no-version-check \\
+    --geneMap {input[3]} \\
+    --threads 6 \\
+    --libType=$LIBTYPE \\
+    --index {input[2]} \\
+    -1 {input[0]} -2 {input[1]} \\
+    -o {config.out_dir}/{config.pseudo_aligner}/{sample}
+"""
+when = "config.pseudo_aligner == 'salmon' && !config.skip_pseudo_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector'"
+[rules.resources]
+threads = 6
+memory = "36G"
+[rules.environment]
+conda = "envs/salmon.yaml"
+
+[[rules]]
 name = "tx2gene_pseudo"
 description = "Build transcript-to-gene mapping for pseudo-alignment (nf-core CUSTOM_TX2GENE, prefix <pseudo_aligner>.merged; --quant-type from pseudo_aligner: quant.sf for salmon, abundance.tsv for kallisto)"
 input = ["{config.out_dir}/reference/gtf.processed.gtf"]
 output = [
     "{config.out_dir}/{config.pseudo_aligner}/{config.pseudo_aligner}.merged.tx2gene.tsv",
 ]
-depends_on = ["salmon_quant_pseudo", "salmon_quant_pseudo_bbsplit", "salmon_quant_pseudo_sortmerna", "salmon_quant_pseudo_bowtie2", "kallisto_quant_pseudo", "kallisto_quant_pseudo_bbsplit", "kallisto_quant_pseudo_sortmerna", "kallisto_quant_pseudo_bowtie2"]
+depends_on = ["salmon_quant_pseudo", "salmon_quant_pseudo_bbsplit", "salmon_quant_pseudo_sortmerna", "salmon_quant_pseudo_bowtie2", "salmon_quant_pseudo_ribodetector", "kallisto_quant_pseudo", "kallisto_quant_pseudo_bbsplit", "kallisto_quant_pseudo_sortmerna", "kallisto_quant_pseudo_bowtie2", "kallisto_quant_pseudo_ribodetector"]
 shell = """
 FIRST_SAMPLE=$(printf "%s" "{config.samples_list}" | cut -d, -f1)
 python scripts/tx2gene.py \\

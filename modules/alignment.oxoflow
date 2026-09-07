@@ -164,10 +164,41 @@ memory = "72G"
 [rules.environment]
 conda = "envs/star.yaml"
 
+[[rules]]
+name = "star_align_ribodetector"
+description = "STAR alignment on Ribodetector-filtered reads (nf-core STAR_ALIGN, star_salmon args)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.star_index}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --twopassMode Basic --runRNGseed 0 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1 --outSAMstrandField intronMotif --quantTranscriptomeSAMoutput BanSingleEnd --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_salmon' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
 # STAR_ALIGN with the star_rsem quantifier args (upstream align_star.config
 # 'rsem' branch: no --twopassMode / --runRNGseed / --outSAMstrandField /
 # --quantTranscriptomeSAMoutput; adds the RSEM-oriented filtering flags).
 # Same four FASTQ_QC read-source variants as the star_salmon rules.
+
 [[rules]]
 name = "star_align_rsem"
 description = "STAR alignment with star_rsem args on trimmed reads (nf-core STAR_ALIGN)"
@@ -288,9 +319,40 @@ memory = "72G"
 [rules.environment]
 conda = "envs/star.yaml"
 
+[[rules]]
+name = "star_align_rsem_ribodetector"
+description = "STAR alignment with star_rsem args on Ribodetector-filtered reads (nf-core STAR_ALIGN)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.star_index}",
+    "{config.out_dir}/reference/gtf.processed.gtf",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.final.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.Log.progress.out",
+    "{config.out_dir}/{config.aligner}/log/{sample}.SJ.out.tab",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.out.bam",
+    "{config.out_dir}/{config.aligner}/{sample}.Aligned.toTranscriptome.out.bam",
+]
+shell = """
+set -euo pipefail
+STAR --genomeDir {input[2]} --readFilesIn {input[0]} {input[1]} --runThreadN {effective_threads} --outFileNamePrefix {sample}. --sjdbGTFfile {input[3]} --outSAMattrRGline 'ID:{sample}' 'SM:{sample}' --quantMode TranscriptomeSAM --outSAMtype BAM Unsorted --outSAMattributes NH HI AS NM MD --readFilesCommand zcat --outSAMunmapped Within --outFilterType BySJout --outFilterMultimapNmax 20 --outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04 --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --alignSJoverhangMin 8 --alignSJDBoverhangMin 1 --sjdbScore 1 --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 ))
+mv {sample}.Log.final.out {sample}.Log.out {sample}.Log.progress.out {sample}.SJ.out.tab {config.out_dir}/{config.aligner}/log/
+mv {sample}.Aligned.out.bam {sample}.Aligned.toTranscriptome.out.bam {config.out_dir}/{config.aligner}/
+"""
+when = "config.aligner == 'star_rsem' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/star.yaml"
+
 # HISAT2_EXTRACTSPLICESITES (process_medium: 2/12G/4h). Upstream output name
 # is {gtf.baseName}.splice_sites.txt; the port uses a fixed canonical path
 # under reference/ (the hisat2 index builder and align rules consume it).
+
 [[rules]]
 name = "hisat2_splicesites"
 description = "Extract splice sites from GTF for HISAT2 (nf-core HISAT2_EXTRACTSPLICESITES)"
@@ -516,6 +578,41 @@ memory = "72G"
 [rules.environment]
 conda = "envs/hisat2.yaml"
 
+[[rules]]
+name = "hisat2_align_ribodetector"
+description = "HISAT2 alignment on Ribodetector-filtered reads (nf-core HISAT2_ALIGN, prefix <id>)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/reference/hisat2_index",
+    "{config.out_dir}/reference/genes.splice_sites.txt",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.bam",
+    "{config.out_dir}/{config.aligner}/log/{sample}.hisat2.summary.log",
+]
+shell = """
+set -euo pipefail
+STRAND=""
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+STRANDEDNESS="{meta.strandedness}"
+if [ -z "$STRANDEDNESS" ] || [ "$STRANDEDNESS" = "auto" ]; then STRANDEDNESS="{config.strandedness}"; fi
+if [ "$STRANDEDNESS" = "forward" ]; then STRAND="--rna-strandness FR"; fi
+if [ "$STRANDEDNESS" = "reverse" ]; then STRAND="--rna-strandness RF"; fi
+INDEX=`find -L {input[2]} -name "*.1.ht2*" | sed 's/\\.1.ht2.*$//'`
+hisat2 -x $INDEX -1 {input[0]} -2 {input[1]} $STRAND --known-splicesite-infile {input[3]} --summary-file {sample}.hisat2.summary.log --threads 12 --no-mixed --no-discordant --met-stderr --new-summary --dta --rg-id {sample} --rg SM:{sample} | samtools view -bS -F 4 -F 8 -F 256 - > {sample}.bam
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.bam {config.out_dir}/{config.aligner}/
+mv {sample}.hisat2.summary.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'hisat2' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/hisat2.yaml"
+
 # BOWTIE2_ALIGN (process_high: 12/72G/16h) for the bowtie2_salmon aligner.
 # Command mirrors the upstream nf-core bowtie2/align module as configured by
 # conf/modules/align_bowtie2.config: sort_bam=false -> `samtools view` keeps
@@ -524,6 +621,7 @@ conda = "envs/hisat2.yaml"
 # index prefix is located via *.rev.1.bt2 like the upstream module. The
 # {sample}.bowtie2.log (stderr tee, upstream publishDir {aligner}/log/*.log)
 # feeds both MultiQC and the fail_mapped section of the custom content file.
+
 [[rules]]
 name = "bowtie2_align"
 description = "Bowtie2 alignment on trimmed reads (nf-core BOWTIE2_ALIGN, prefix <id>)"
@@ -632,10 +730,38 @@ memory = "72G"
 [rules.environment]
 conda = "envs/bowtie2.yaml"
 
+[[rules]]
+name = "bowtie2_align_ribodetector"
+description = "Bowtie2 alignment on Ribodetector-filtered reads (nf-core BOWTIE2_ALIGN, prefix <id>)"
+input = [
+    "{config.out_dir}/ribodetector/{sample}_1.non_rRNA.fastq.gz",
+    "{config.out_dir}/ribodetector/{sample}_2.non_rRNA.fastq.gz",
+    "{config.out_dir}/reference/bowtie2_index",
+]
+output = [
+    "{config.out_dir}/{config.aligner}/{sample}.bam",
+    "{config.out_dir}/{config.aligner}/log/{sample}.bowtie2.log",
+]
+shell = """
+set -euo pipefail
+INDEX=`find -L {input[2]} -name "*.rev.1.bt2" | sed 's/\\.rev\\.1.bt2$//'`
+bowtie2 -x $INDEX -1 {input[0]} -2 {input[1]} --threads 12 --very-sensitive --no-discordant -k 200 --rg-id {sample} --rg SM:{sample} 2> >(tee {sample}.bowtie2.log >&2) | samtools view --threads 12 -o {sample}.bam -
+mkdir -p {config.out_dir}/{config.aligner}/log
+mv {sample}.bam {config.out_dir}/{config.aligner}/
+mv {sample}.bowtie2.log {config.out_dir}/{config.aligner}/log/
+"""
+when = "config.aligner == 'bowtie2_salmon' && !config.skip_alignment && config.remove_ribo_rna && config.ribo_removal_tool == 'ribodetector'"
+[rules.resources]
+threads = 12
+memory = "72G"
+[rules.environment]
+conda = "envs/bowtie2.yaml"
+
 # SAMTOOLS_SORT (hisat2 side): the FASTQ_ALIGN_HISAT2 subworkflow sorts
 # {sample}.bam with the same BAM_SORT_STATS_SAMTOOLS process. Outputs land on
 # the shared {sample}.sorted.bam path so the existing sorted-side index/stats
 # rules serve both aligners.
+
 [[rules]]
 name = "samtools_sort_hisat2"
 description = "Coordinate-sort HISAT2 BAM (nf-core SAMTOOLS_SORT in FASTQ_ALIGN_HISAT2, prefix <id>.sorted)"

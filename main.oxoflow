@@ -156,11 +156,13 @@ skip_bbsplit = true
 bbsplit_fasta_list = ""
 save_bbsplit_reads = false
 # Ribosomal RNA removal (upstream: --remove_ribo_rna / --ribo_removal_tool /
-# --ribo_database_manifest / --save_non_ribo_reads; same defaults). Only
-# 'sortmerna' and 'bowtie2' are wired; other upstream-valid values (e.g.
-# ribodetector) silently leave rRNA removal off with remove_ribo_rna=true —
-# set remove_ribo_rna=false if you are not using sortmerna/bowtie2. The
-# manifest is one fasta path per line; .gz entries are gunzipped before use.
+# --ribo_database_manifest / --save_non_ribo_reads; same defaults). All three
+# upstream tools are wired: 'sortmerna' and 'bowtie2' consume
+# ribo_database_manifest (reference-based); 'ribodetector' is ML-based and
+# reference-free (the manifest is not read on that branch). ribodetector runs
+# the CPU binary — upstream's use_gpu_ribodetector GPU path is a documented
+# divergence. ribodetector additionally needs the seqkit stats step, which
+# the port ships as part of the branch.
 remove_ribo_rna = false
 ribo_removal_tool = "sortmerna"
 ribo_database_manifest = "assets/rrna-db-defaults.txt"
