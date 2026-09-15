@@ -419,6 +419,8 @@ expand_inputs = [
 ]
 output = [
     "{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html",
+    "{config.out_dir}/multiqc/{config.aligner}/multiqc_report_data/",
+    "{config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots/",
 ]
 shell = """
 # Stage every contributor into one flat directory so the merged MultiQC run
@@ -458,6 +460,12 @@ multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --
 # mkdir -p before the move (live: hisat2 multiqc lost the report).
 mkdir -p ../{config.out_dir}/multiqc/{config.aligner}
 mv multiqc_report.html ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
+# export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
+# the data/ and plots/ directories next to the report inside the stage dir;
+# publish them alongside the html to match upstream (they previously were
+# destroyed with the stage dir).
+mv multiqc_report_data ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
+mv multiqc_report_plots ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
 cd ..
 rm -rf mqc_stage
 """
@@ -543,6 +551,8 @@ expand_inputs = [
 ]
 output = [
     "{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html",
+    "{config.out_dir}/multiqc/{config.aligner}/multiqc_report_data/",
+    "{config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots/",
 ]
 shell = """
 # Stage every contributor into one flat directory so the merged MultiQC run
@@ -582,6 +592,12 @@ multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --
 # mkdir -p before the move (live: hisat2 multiqc lost the report).
 mkdir -p ../{config.out_dir}/multiqc/{config.aligner}
 mv multiqc_report.html ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
+# export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
+# the data/ and plots/ directories next to the report inside the stage dir;
+# publish them alongside the html to match upstream (they previously were
+# destroyed with the stage dir).
+mv multiqc_report_data ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
+mv multiqc_report_plots ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
 cd ..
 rm -rf mqc_stage
 """

@@ -149,9 +149,11 @@ memory = "36G"
 conda = "envs/rseqc.yaml"
 
 # RSEQC_JUNCTIONANNOTATION: junction_annotation.py -i <bam> -r <gene.bed> -o
-# <prefix>; the CLI runs Rscript <prefix>.junction_plot.r internally (pdfs go
-# to the CWD: splicing_events_pie.pdf / splicing_junction_pie.pdf) and
-# generate_bed12 writes <prefix>.junction.bed from <prefix>.junction.xls.
+# <prefix>; the CLI runs Rscript <prefix>.junction_plot.r internally (the
+# emitted script embeds the -o prefix, so the pdfs land beside it as
+# <prefix>.splice_events.pdf / <prefix>.splice_junction.pdf — names kept
+# tool-native like upstream) and generate_bed12 writes <prefix>.junction.bed
+# and <prefix>.junction.Interact.bed from <prefix>.junction.xls.
 # Stderr is filtered for the htslib E::idx_find_and_load noise like the
 # upstream module.
 [[rules]]
@@ -164,9 +166,10 @@ input = [
 ]
 output = [
     "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/bed/{sample}.junction.bed",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/bed/{sample}.junction.Interact.bed",
     "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/log/{sample}.junction_annotation.log",
-    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf",
-    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.splice_events.pdf",
+    "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.splice_junction.pdf",
     "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/rscript/{sample}.junction_plot.r",
     "{config.out_dir}/{config.aligner}/rseqc/junction_annotation/xls/{sample}.junction.xls",
 ]
@@ -174,13 +177,14 @@ shell = """
 junction_annotation.py -i {input[0]} -r {input[2]} -o {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample} 2>| >(grep -v 'E::idx_find_and_load' | tee {config.out_dir}/{config.aligner}/rseqc/junction_annotation/log/{sample}.junction_annotation.log >&2)
 mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.junction.xls {config.out_dir}/{config.aligner}/rseqc/junction_annotation/xls/
 mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.junction.bed {config.out_dir}/{config.aligner}/rseqc/junction_annotation/bed/
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.junction.Interact.bed {config.out_dir}/{config.aligner}/rseqc/junction_annotation/bed/
 mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.junction_plot.r {config.out_dir}/{config.aligner}/rseqc/junction_annotation/rscript/
 # the emitted R script embeds the full -o prefix in its pdf() paths, so
 # it must run from the workflow ROOT (live: running it from the output
 # subdir double-prefixed the path — 'cannot open file')
 Rscript {config.out_dir}/{config.aligner}/rseqc/junction_annotation/rscript/{sample}.junction_plot.r
-mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.splice_events.pdf {config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_events.pdf
-mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.splice_junction.pdf {config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/{sample}.junction_plot.pdf
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.splice_events.pdf {config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/
+mv {config.out_dir}/{config.aligner}/rseqc/junction_annotation/{sample}.splice_junction.pdf {config.out_dir}/{config.aligner}/rseqc/junction_annotation/pdf/
 """
 when = "!config.skip_qc"
 [rules.resources]
