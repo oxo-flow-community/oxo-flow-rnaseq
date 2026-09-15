@@ -247,10 +247,18 @@ before the rule DAG).
   `gene_data/`, `intercepts_slope/`, `multiqc/`, `<id>.R_sessionInfo.log`
 - `star_salmon/qualimap/<id>/` — Qualimap RNA-seq QC results
 - `star_salmon/bigwig/` — `<id>.forward.bigWig`, `<id>.reverse.bigWig`,
-  `<id>.bigWig` (FW/REV only for stranded libraries)
+  `<id>.bigWig` (FW/REV only for stranded libraries; with the default global
+  `strandedness = "unstranded"` only the single `<id>.bigWig` is produced per
+  sample — the upstream test run's FW/REV bigWigs come from per-sample
+  strandedness columns)
 - `multiqc/` — custom content files and
   `multiqc/star_salmon/{multiqc_report.html, multiqc_report_data/, multiqc_report_plots/}`
-  (data/plots exported since `export_plots: true` mirrors upstream)
+  (data/plots exported since `export_plots: true` mirrors upstream). The mqc
+  custom content feeds MultiQC from `results/multiqc/` (fail_trimmed /
+  fail_mapped, strand checks, sample merge, software versions) and the
+  producers' dirs (`<aligner>/deseq2_qc/`, `featurecounts/`,
+  `dupradar/multiqc/`) — see fidelity row 31 for the publishing deltas vs
+  upstream. No `pipeline_info/` is produced.
 
 With `aligner = "bowtie2_salmon"` the alignment outputs land under
 `results/bowtie2_salmon/` (`<id>.bam`, `<id>.sorted.bam`+`.bai`,
@@ -315,6 +323,7 @@ Known, documented deviations:
 | 28 | `PREPARE_GENOME` output (transgenes from `additional_fasta` included) feeds `STAR_GENOMEGENERATE`, so the upstream STAR index contains the transgene sequences | The `[[references]]` `star_index` builder in `main.oxoflow` builds from the raw fixture paths (`config.fasta` / `config.gtf`) | `[[references]]` build before the rule DAG and cannot consume `prepare_genome` rule outputs (see `modules/prepare_genome.oxoflow` header); with `additional_fasta` set the STAR index lacks the transgene contigs while the other index builders (HISAT2 / RSEM / Salmon) use the processed `results/reference/` artifacts — point `config.star_index` at an externally built index if transgenes must be in the STAR index |
 | 29 | `RIBODETECTOR` rRNA removal (`--ribo_removal_tool ribodetector`): `SEQKIT_STATS` on the filtered reads derives the read length (`getReadLengthFromSeqkitStats`: mean of `avg_len` rounded, fallback 100), then `ribodetector_cpu` filters both reads (`-l <len> -t <cpus>`), process_medium 6/36G, conda `bioconda::ribodetector=0.3.3` (no openjdk — the CPU binary embeds its runtime) | Ported as `fastq_qc::seqkit_stats` (+`_bbsplit`) + `fastq_qc::ribodetector` (+`_bbsplit`) with the same awk mean/round/fallback read-length derivation, published as `ribodetector/{sample}_1/_2.non_rRNA.fastq.gz` + `{sample}.log`; aligner and pseudo-quantification read the ribodetector outputs via the `_ribodetector` twins (STAR ×2, HISAT2, Bowtie2, Salmon pseudo, Kallisto pseudo); `fq_lint_rrna_ribodetector` + `fastqc_filtered_ribodetector` mirror the other rRNA branches' QC | The GPU flag is dropped: upstream `--use_gpu_ribodetector` switches to the `ribodetector` binary + GPU accelerator profile; the port always runs `ribodetector_cpu` (no GPU resources in oxo-flow) — the config comment documents the divergence. Unlike SortMeRNA/Bowtie2, ribodetector is ML-based and reference-free, so `rrna_fastas` / `sortmerna_index` / `bowtie2_rrna_index` are not read on this branch (the `rrna_fastas_prepare` gate stays `sortmerna \|\| bowtie2` like upstream) |
 | 30 | Contaminant screening (`--contaminant_screening kraken2 \| kraken2_bracken \| sylph`, gated on `!params.skip_qc`): Kraken2 2.1.6 (`--confidence 0.05 --minimum-hit-groups 3` + `--gzip-compressed --report`), Bracken 3.1 (`-d -i -o` on the report), Sylph 0.9.0 (`profile -c 100 -u`), sylph-tax 1.2.0 (`taxprof <profiles> -t <taxonomy>`, output `.sylphmpa`) | Ported as `contaminant::kraken2` / `contaminant::bracken` / `contaminant::sylph_profile` / `contaminant::sylphtax_taxprof` (module `modules/contaminant_screening.oxoflow`, gated on `config.contaminant_screening`, published under `contaminant_screening/`); kraken DBs, sylph DB and taxonomy config are user-provided via `config.kraken_db` / `config.sylph_db` / `config.sylph_taxonomy` (fail-style like the GTDB/geNomad conventions — the engine cannot download them mid-run) | Two divergences: `contaminant_screening_input` is fixed to `trimmed` (upstream default `unmapped` reads STAR's `Unmapped.out` reads, which the port's star_align rules do not emit); a comma-separated `sylph_db` list is not supported (the port takes the whole value as one DB path) — both recorded in the config comments and Not ported |
+| 31 | `pipeline_info/` published (runtime-collated software versions + report); MultiQC custom content (`fail_trimmed` / `fail_mapped`, strand checks, deseq2 pca/dists, biotype, dupradar) is fed to MultiQC unpublished; no `reference/` or `read_merging/` top-level dirs | No `pipeline_info/` — the software-versions YAML publishes as `multiqc/nf_core_rnaseq_software_mqc_versions.yml` and feeds MultiQC from there (row 11 covers the collation gap); mqc custom content publishes to `results/multiqc/` (top level) and the producing rule's dir (`<aligner>/deseq2_qc/`, `featurecounts/`, `dupradar/multiqc/`); port-only top-level `reference/` (canonical reference chain) and `read_merging/` (CAT_FASTQ merges), `*.R_sessionInfo.log` files published next to their producers | oxo-flow re-executes from declared outputs, so every artifact MultiQC consumes stays published (rows 7/16 rationale); `pipeline_info` equivalents live next to the MultiQC inputs |
 
 ## Not ported (metadata `excluded`)
 
