@@ -458,14 +458,16 @@ multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --
 # The aligner subdir only exists when an earlier aligner-scoped rule
 # (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
 # mkdir -p before the move (live: hisat2 multiqc lost the report).
-mkdir -p ../{config.out_dir}/multiqc/{config.aligner}
-mv multiqc_report.html ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
+# Publish from the rule's workdir cwd — a `../` prefix would combine with
+# an absolute {config.out_dir} into a phantom `..//abs/path` (issue #428).
+mkdir -p {config.out_dir}/multiqc/{config.aligner}
+mv multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 # export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
 # the data/ and plots/ directories next to the report inside the stage dir;
 # publish them alongside the html to match upstream (they previously were
 # destroyed with the stage dir).
-mv multiqc_report_data ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
-mv multiqc_report_plots ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
+mv multiqc_report_data {config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
+mv multiqc_report_plots {config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
 cd ..
 rm -rf mqc_stage
 """
@@ -590,14 +592,16 @@ multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --
 # The aligner subdir only exists when an earlier aligner-scoped rule
 # (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
 # mkdir -p before the move (live: hisat2 multiqc lost the report).
-mkdir -p ../{config.out_dir}/multiqc/{config.aligner}
-mv multiqc_report.html ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
+# Publish from the rule's workdir cwd — a `../` prefix would combine with
+# an absolute {config.out_dir} into a phantom `..//abs/path` (issue #428).
+mkdir -p {config.out_dir}/multiqc/{config.aligner}
+mv multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 # export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
 # the data/ and plots/ directories next to the report inside the stage dir;
 # publish them alongside the html to match upstream (they previously were
 # destroyed with the stage dir).
-mv multiqc_report_data ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
-mv multiqc_report_plots ../{config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
+mv multiqc_report_data {config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
+mv multiqc_report_plots {config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
 cd ..
 rm -rf mqc_stage
 """
