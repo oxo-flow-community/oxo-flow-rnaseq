@@ -14,7 +14,7 @@ echo "==> lint (warnings are acceptable, errors are not)"
 echo "==> dry-run with default config"
 # oxo-flow v0.11.0 prints the plan to stderr; capture both streams
 "$OXO" dry-run main.oxoflow --samples first:1 > /tmp/oxo-dryrun-$$.txt 2>&1
-grep -q "would execute" /tmp/oxo-dryrun-$$.txt
+grep -q "To execute:" /tmp/oxo-dryrun-$$.txt
 
 echo "dry-run plan lines: $(wc -l < /tmp/oxo-dryrun-$$.txt)"
 
