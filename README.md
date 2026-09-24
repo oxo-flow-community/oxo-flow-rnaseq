@@ -80,7 +80,7 @@ The repository ships tiny synthetic fixtures for all of the above
 node capacity accordingly.
 
 **Tool delivery:** conda environments with pinned versions. Every rule
-declares `[rules.environment] conda = "envs/<tool>.yaml"` (31 environments
+declares `[rules.environment] conda = "envs/<tool>.yaml"` (37 environments
 in `envs/`), with each package version pinned exactly to the upstream
 nf-core/rnaseq 3.26.0 module environment (e.g. `star=2.7.11b`,
 `salmon=1.10.3`, `multiqc=1.33`). No containers are used — you need conda or
