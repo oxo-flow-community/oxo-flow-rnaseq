@@ -453,22 +453,23 @@ for f in {input}; do
         *) cp -L "$f" mqc_stage/ ;;
     esac
 done
-cd mqc_stage
-multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --filename multiqc_report.html --replace-names name_replacement.txt .
+multiqc --force --config mqc_stage/multiqc_config.yml --config mqc_stage/multiqc_sample_merge.yml --filename mqc_stage/multiqc_report.html --replace-names mqc_stage/name_replacement.txt mqc_stage
+# Publish while still at the run-dir root: `cd mqc_stage` first made the
+# relative {config.out_dir} resolve INSIDE mqc_stage, so the `rm -rf mqc_stage`
+# below destroyed the freshly published report (live: multiqc output
+# validation failed — report landed in mqc_stage/results/multiqc/...).
+# Anchoring the config paths to mqc_stage/ keeps the engine cwd untouched.
 # The aligner subdir only exists when an earlier aligner-scoped rule
 # (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
 # mkdir -p before the move (live: hisat2 multiqc lost the report).
-# Publish from the rule's workdir cwd — a `../` prefix would combine with
-# an absolute {config.out_dir} into a phantom `..//abs/path` (issue #428).
 mkdir -p {config.out_dir}/multiqc/{config.aligner}
-mv multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
+mv mqc_stage/multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 # export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
 # the data/ and plots/ directories next to the report inside the stage dir;
 # publish them alongside the html to match upstream (they previously were
 # destroyed with the stage dir).
-mv multiqc_report_data {config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
-mv multiqc_report_plots {config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
-cd ..
+mv mqc_stage/multiqc_report_data {config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
+mv mqc_stage/multiqc_report_plots {config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
 rm -rf mqc_stage
 """
 [rules.resources]
@@ -587,22 +588,23 @@ for f in {input}; do
         *) cp -L "$f" mqc_stage/ ;;
     esac
 done
-cd mqc_stage
-multiqc --force --config multiqc_config.yml --config multiqc_sample_merge.yml --filename multiqc_report.html --replace-names name_replacement.txt .
+multiqc --force --config mqc_stage/multiqc_config.yml --config mqc_stage/multiqc_sample_merge.yml --filename mqc_stage/multiqc_report.html --replace-names mqc_stage/name_replacement.txt mqc_stage
+# Publish while still at the run-dir root: `cd mqc_stage` first made the
+# relative {config.out_dir} resolve INSIDE mqc_stage, so the `rm -rf mqc_stage`
+# below destroyed the freshly published report (live: multiqc output
+# validation failed — report landed in mqc_stage/results/multiqc/...).
+# Anchoring the config paths to mqc_stage/ keeps the engine cwd untouched.
 # The aligner subdir only exists when an earlier aligner-scoped rule
 # (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
 # mkdir -p before the move (live: hisat2 multiqc lost the report).
-# Publish from the rule's workdir cwd — a `../` prefix would combine with
-# an absolute {config.out_dir} into a phantom `..//abs/path` (issue #428).
 mkdir -p {config.out_dir}/multiqc/{config.aligner}
-mv multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
+mv mqc_stage/multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 # export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
 # the data/ and plots/ directories next to the report inside the stage dir;
 # publish them alongside the html to match upstream (they previously were
 # destroyed with the stage dir).
-mv multiqc_report_data {config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
-mv multiqc_report_plots {config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
-cd ..
+mv mqc_stage/multiqc_report_data {config.out_dir}/multiqc/{config.aligner}/multiqc_report_data
+mv mqc_stage/multiqc_report_plots {config.out_dir}/multiqc/{config.aligner}/multiqc_report_plots
 rm -rf mqc_stage
 """
 [rules.resources]
