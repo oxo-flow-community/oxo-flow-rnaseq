@@ -454,14 +454,18 @@ for f in {input}; do
     esac
 done
 multiqc --force --config mqc_stage/multiqc_config.yml --config mqc_stage/multiqc_sample_merge.yml --filename mqc_stage/multiqc_report.html --replace-names mqc_stage/name_replacement.txt mqc_stage
-# Publish while still at the run-dir root: `cd mqc_stage` first made the
-# relative {config.out_dir} resolve INSIDE mqc_stage, so the `rm -rf mqc_stage`
-# below destroyed the freshly published report (live: multiqc output
-# validation failed — report landed in mqc_stage/results/multiqc/...).
-# Anchoring the config paths to mqc_stage/ keeps the engine cwd untouched.
-# The aligner subdir only exists when an earlier aligner-scoped rule
-# (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
-# mkdir -p before the move (live: hisat2 multiqc lost the report).
+# Publish while still at the run-dir root: an earlier cd into mqc_stage made
+# the relative config.out_dir resolve INSIDE mqc_stage, so the rm -rf below
+# destroyed the freshly published report (live: multiqc output validation
+# failed - report landed in mqc_stage/results/multiqc/...). Anchoring the
+# config paths to mqc_stage/ keeps the engine cwd untouched. The aligner
+# subdir only exists when an earlier aligner-scoped rule (e.g. deseq2_qc)
+# created it; hisat2/star_rsem have no such rule, so mkdir -p before the
+# move (live: hisat2 multiqc lost the report).
+# NOTE for future editors: keep comments in rule bodies free of backticks
+# and single/double quotes - the engine security scanner parses rm operand
+# segments from the whole shell text and fails closed on quoted rm targets,
+# so prose around an rm line can block an otherwise valid rule.
 mkdir -p {config.out_dir}/multiqc/{config.aligner}
 mv mqc_stage/multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 # export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
@@ -589,14 +593,18 @@ for f in {input}; do
     esac
 done
 multiqc --force --config mqc_stage/multiqc_config.yml --config mqc_stage/multiqc_sample_merge.yml --filename mqc_stage/multiqc_report.html --replace-names mqc_stage/name_replacement.txt mqc_stage
-# Publish while still at the run-dir root: `cd mqc_stage` first made the
-# relative {config.out_dir} resolve INSIDE mqc_stage, so the `rm -rf mqc_stage`
-# below destroyed the freshly published report (live: multiqc output
-# validation failed — report landed in mqc_stage/results/multiqc/...).
-# Anchoring the config paths to mqc_stage/ keeps the engine cwd untouched.
-# The aligner subdir only exists when an earlier aligner-scoped rule
-# (e.g. deseq2_qc) created it; hisat2/star_rsem have no such rule, so
-# mkdir -p before the move (live: hisat2 multiqc lost the report).
+# Publish while still at the run-dir root: an earlier cd into mqc_stage made
+# the relative config.out_dir resolve INSIDE mqc_stage, so the rm -rf below
+# destroyed the freshly published report (live: multiqc output validation
+# failed - report landed in mqc_stage/results/multiqc/...). Anchoring the
+# config paths to mqc_stage/ keeps the engine cwd untouched. The aligner
+# subdir only exists when an earlier aligner-scoped rule (e.g. deseq2_qc)
+# created it; hisat2/star_rsem have no such rule, so mkdir -p before the
+# move (live: hisat2 multiqc lost the report).
+# NOTE for future editors: keep comments in rule bodies free of backticks
+# and single/double quotes - the engine security scanner parses rm operand
+# segments from the whole shell text and fails closed on quoted rm targets,
+# so prose around an rm line can block an otherwise valid rule.
 mkdir -p {config.out_dir}/multiqc/{config.aligner}
 mv mqc_stage/multiqc_report.html {config.out_dir}/multiqc/{config.aligner}/multiqc_report.html
 # export_plots: true (assets/multiqc/multiqc_config.yml) makes MultiQC emit
