@@ -108,6 +108,98 @@ export OXO=oxo-flow
 ./test/run.sh
 ```
 
+### Running on your own data
+
+The default config points every input at `test/fixtures/` so a fresh clone
+validates and dry-runs cleanly. For a real analysis, override the paths and
+the sample list on the command line — no workflow edits needed:
+
+```bash
+# 1. Select your samples explicitly (do NOT edit [[sample_groups]] in the
+#    workflow). Per-project sample lists use a samplesheet — TSV/CSV/JSON
+#    with `name` and `samples` columns:
+cat > samples.tsv <<'EOF'
+name	samples
+cohort	SRR6357072,SRR6357076,SRR6357079
+EOF
+
+# 2. Dry-run with the samplesheet + overrides to check the plan (paths
+#    resolve relative to the workflow dir; absolute paths work too).
+#    Run flags come BEFORE the KEY=VALUE overrides.
+"$OXO" dry-run main.oxoflow --samples @samples.tsv \
+    reads_dir=/data/project/reads \
+    fasta=/data/ref/GRCh38.fa \
+    gtf=/data/ref/gencode.v47.annotation.gtf \
+    gene_bed= \
+    chrom_sizes= \
+    transcript_fasta= \
+    star_index=/data/ref/star_index \
+    gencode=true \
+    featurecounts_group_type=gene_type \
+    metadata_file=/data/project/samples_meta.tsv \
+    out_dir=/data/project/results
+
+# 3. Same command with `run`:
+"$OXO" run main.oxoflow --samples @samples.tsv <overrides...>
+
+#    or filter by name / pilot size without touching the samplesheet:
+"$OXO" run main.oxoflow --samples SRR6357072,SRR6357076 <overrides...>
+"$OXO" run main.oxoflow --samples first:1 <overrides...>   # 1-sample pilot
+```
+
+Key points:
+
+- **`KEY=VALUE` overrides** replace the fixture defaults per run (trailing
+  positional arguments *after* the workflow file and all run flags —
+  `KEY=VALUE` and `--KEY=VALUE` both work; run flags like `--samples` must
+  come **before** the overrides). Set `reads_dir`, `fasta`, `gtf` and
+  `star_index` at minimum; `gene_bed` / `chrom_sizes` / `transcript_fasta`
+  can be forced to **empty values** (`gene_bed=`) to mean "derive from
+  fasta + gtf" (`prepare_genome` chain; see fidelity row 2) — the shipped
+  defaults point at the fixtures, so an explicit empty override selects the
+  derive branch (empty-override support requires oxo-flow >= 0.18.2, #437).
+- **GENCODE references** (the dominant real-world annotation): set
+  `gencode=true` and `featurecounts_group_type=gene_type`. The
+  `transcript_fasta` derived from a GENCODE GTF gets its `|`-joined headers
+  truncated automatically (upstream PREPROCESS_TRANSCRIPTS_FASTA_GENCODE).
+- **The STAR index** is built by the `[[references]]` builder, whose `build`
+  command uses the workflow's fixture paths. For real data, **pre-build the
+  index externally** (`STAR --runMode genomeGenerate --genomeDir <dir>
+  --genomeFastaFiles <fasta> --sjdbGTFfile <gtf> --runThreadN 8` — use the
+  processed GTF only if you rely on `additional_fasta` transgenes, see
+  fidelity row 28) and point `star_index=<dir>` at it. The same applies to
+  the other branch indexes (`hisat2_index`, `rsem_index`, `salmon_index`,
+  `bowtie2_index`, `kallisto_index`) — a non-empty key symlinks your index
+  in instead of building from the fixtures.
+- **Per-sample metadata** (e.g. `strandedness`) goes in a TSV passed via
+  `metadata_file` — first column = sample id, additional columns become
+  `{meta.<column>}` values (see "Per-sample strandedness" below).
+- **Sample names must match the FASTQ file names**:
+  `reads_dir/<sample>_R1.fastq.gz` / `<sample>_R2.fastq.gz`.
+
+#### Sizing `--max-threads` on shared servers
+
+The plan-time resource summary (`total N threads declared, max M
+threads/rule`) adds up every rule's declared threads across the whole DAG —
+it is an upper bound for a serial-queue host, not the concurrent footprint.
+On a shared server, cap concurrent thread usage with:
+
+```bash
+"$OXO" run main.oxoflow --max-threads 32
+```
+
+`--max-threads` (and `--max-memory`) cap what the scheduler runs
+concurrently: rules keep their declared upstream resources (STAR 12 CPUs /
+72 GB is the largest), but the engine never runs more work than the cap
+allows — a rule whose declared request *exceeds* the cap aborts the run
+before anything executes ("resource budget too small"), so the cap must be
+at least the largest single rule (STAR: 12 threads / 72 GB; the majority of
+rules want 6 CPUs / 36 GB or 1 CPU / 6 GB). Rule of thumb for
+interactive/shared hosts: set `--max-threads` to about half the node's
+cores (≥ 12 so STAR fits) so other users keep headroom; leave `0`
+(auto-detect) only on dedicated nodes. `--max-memory` works the same way in
+MB (≥ 73728 for the STAR branch).
+
 The pipeline follows the upstream default path:
 
 ```
@@ -147,18 +239,18 @@ the upstream defaults:
 | `pseudo_aligner_kmer_size` | `--pseudo_aligner_kmer_size` | `31` | `kallisto index -k` (upstream default) |
 | `gene_bed` | `--gene_bed` | `test/fixtures/reference/gene.bed` | 12-column BED for RSeQC; empty = derived from the GTF by `prepare_genome::gene_bed` (ea-utils gtf2bed) |
 | `chrom_sizes` | `--chrom_sizes` | `test/fixtures/reference/chrom_sizes.txt` | UCSC chrom.sizes for the bigWig rules; empty = derived from the fasta by `prepare_genome::chrom_sizes` (`samtools faidx`) |
-| `transcript_fasta` | `--transcript_fasta` | `test/fixtures/reference/transcripts.fa` | Salmon alignment-mode quant + the bowtie2 / salmon / kallisto index builders; empty = derived from fasta + gtf by `prepare_genome::transcript_fasta` (RSEM); plain or `.gz` paths accepted; with `gencode=true` the header `|`-joined identifiers are truncated (`cut -d '|' -f1`, upstream PREPROCESS_TRANSCRIPTS_FASTA_GENCODE) |
+| `transcript_fasta` | `--transcript_fasta` | `test/fixtures/reference/transcripts.fa` | Salmon alignment-mode quant + the bowtie2 / salmon / kallisto index builders; empty = derived from fasta + gtf by `prepare_genome::transcript_fasta` (RSEM); plain or `.gz` paths accepted; with `gencode=true` the header `|`-joined identifiers are truncated (`cut -d '|' -f1`, upstream PREPROCESS_TRANSCRIPTS_FASTA_GENCODE) — the same truncation also applies to a user-provided transcript FASTA when `gencode=true` |
 | `gff` | `--gff` | (empty) | annotation in GFF3 format; set instead of `gtf` — converted to GTF by `prepare_genome::gffread_gtf` (gffread `--keep-exon-attrs -F -T`, plain or `.gz`) |
 | `additional_fasta` | `--additional_fasta` | (empty) | extra genome sequences (e.g. ERCC spike-ins): concatenated onto the genome and appended to the GTF as transgenes (fasta2gtf.py, biotype from `featurecounts_group_type` — or `gene_type` when `gencode=true`), like upstream CUSTOM_CATADDITIONALFASTA; plain or `.gz` |
 | `skip_gtf_filter` | `--skip_gtf_filter` | `false` | skip CUSTOM_GTFFILTER (GTF filtered to the genome's sequence names; runs when the upstream `filter_gtf_needed` gate holds) |
 | `skip_gtf_transcript_filter` | `--skip_gtf_transcript_filter` | `false` | keep GTF lines without a `transcript_id` (gtffilter.py `--skip_transcript_id_check`) |
-| `gencode` | (GENCODE genome config) | `false` | GENCODE reference genomes: `gene_type` group feature + transcript-FASTA header truncation (see above) |
+| `gencode` | (GENCODE genome config) | `false` | **Set for GENCODE/Ensembl annotations.** GENCODE reference genomes: switches the featureCounts/tximport group feature from `gene_biotype` to `gene_type` and truncates `|`-joined transcript-FASTA headers (`cut -d '|' -f1`, upstream PREPROCESS_TRANSCRIPTS_FASTA_GENCODE) when `transcript_fasta` is derived or user-provided |
 | `salmon_quant_libtype` | `--salmon_quant_libtype` | (empty) | empty = derive from `strandedness` (forward → ISF, reverse → ISR, else IU); set e.g. `A` for auto-detection |
 | `min_trimmed_reads` | `--min_trimmed_reads` | `10000` | per-sample drop filter: gates the `fastqc_filtered_*` QC rules on the R2 trimmed-read count via `reads_count(...) >= config.min_trimmed_reads` (requires oxo-flow >= 0.17.0); also drives the MultiQC fail_trimmed table (chain-wide drop of failing samples not ported — fidelity row 5) |
 | `min_mapped_reads` | `--min_mapped_reads` | `5` | MultiQC fail_mapped table |
 | `stranded_threshold` | `--stranded_threshold` | `0.8` | RSeQC strand classification |
 | `unstranded_threshold` | `--unstranded_threshold` | `0.1` | RSeQC strand classification |
-| `featurecounts_group_type` | `--featurecounts_group_type` | `gene_biotype` | |
+| `featurecounts_group_type` | `--featurecounts_group_type` | `gene_biotype` | GTF attribute used as the group feature (biotype table + `additional_fasta` transgenes); set to `gene_type` for GENCODE (implied by `gencode=true`) |
 | `featurecounts_feature_type` | `--featurecounts_feature_type` | `exon` | |
 | `extra_fqlint_args` | `--extra_fqlint_args` | `--disable-validator P001` | |
 | `skip_fastqc` | `--skip_fastqc` | `false` | |
