@@ -242,7 +242,10 @@ set -euo pipefail
 mkdir -p {config.out_dir}/reference
 if [ -n "{config.gene_bed}" ]; then
     GENE_BED=$(cd "$(dirname {config.gene_bed})" && pwd)/$(basename {config.gene_bed})
-    ln -s "$GENE_BED" {config.out_dir}/reference/gene.bed
+    # ln -sfn: tolerate a stale symlink from an earlier run era (a bare
+    # ln -s fails with "File exists" when the engine re-runs this rule
+    # over a dirty results/ tree)
+    ln -sfn "$GENE_BED" {config.out_dir}/reference/gene.bed
     exit 0
 fi
 perl scripts/gtf2bed.pl {input[0]} {config.out_dir}/reference/gene
@@ -268,7 +271,7 @@ set -euo pipefail
 mkdir -p {config.out_dir}/reference
 if [ -n "{config.chrom_sizes}" ]; then
     CHROM_SIZES=$(cd "$(dirname {config.chrom_sizes})" && pwd)/$(basename {config.chrom_sizes})
-    ln -s "$CHROM_SIZES" {config.out_dir}/reference/chrom_sizes.txt
+    ln -sfn "$CHROM_SIZES" {config.out_dir}/reference/chrom_sizes.txt
     exit 0
 fi
 # {input[0]} renders as declared (relative fixture paths are relative
@@ -276,6 +279,7 @@ fi
 # the chrom_sizes_wd/genome.fa link resolves against its own directory
 # and samtools faidx fails (live: Failed to open chrom_sizes_wd/genome.fa).
 FASTA_ABS=$(cd "$(dirname {input[0]})" && pwd)/$(basename {input[0]})
+rm -rf chrom_sizes_wd
 mkdir chrom_sizes_wd
 ln -s "$FASTA_ABS" chrom_sizes_wd/genome.fa
 samtools faidx chrom_sizes_wd/genome.fa
@@ -317,10 +321,11 @@ if [ -n "{config.transcript_fasta}" ]; then
         $CAT_CMD {config.transcript_fasta} | cut -d "|" -f1 > {config.out_dir}/reference/transcripts.fa
     else
         TRANSCRIPT_FASTA=$(cd "$(dirname {config.transcript_fasta})" && pwd)/$(basename {config.transcript_fasta})
-        ln -s "$TRANSCRIPT_FASTA" {config.out_dir}/reference/transcripts.fa
+        ln -sfn "$TRANSCRIPT_FASTA" {config.out_dir}/reference/transcripts.fa
     fi
     exit 0
 fi
+rm -rf rsem_tf
 mkdir rsem_tf
 rsem-prepare-reference --gtf {input[1]} --num-threads {effective_threads} {input[0]} rsem_tf/genome
 cp rsem_tf/genome.transcripts.fa {config.out_dir}/reference/transcripts.fa

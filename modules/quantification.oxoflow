@@ -352,6 +352,9 @@ mkdir -p {config.out_dir}/{config.aligner}/deseq2_qc
 mv deseq2.dds.RData deseq2.pca.vals.txt deseq2.plots.pdf deseq2.sample.dists.txt \\
     {config.aligner}.pca.vals_mqc.tsv {config.aligner}.sample.dists_mqc.tsv R_sessionInfo.log \\
     {config.out_dir}/{config.aligner}/deseq2_qc/
+# rm -rf first: a bare mv onto a stale dir from an earlier run era
+# fails with "File exists" when the engine re-runs this rule
+rm -rf {config.out_dir}/{config.aligner}/deseq2_qc/size_factors
 mv size_factors {config.out_dir}/{config.aligner}/deseq2_qc/
 """
 [rules.resources]
@@ -736,9 +739,10 @@ shell = """
 set -euo pipefail
 if [ -n "{config.rsem_index}" ]; then
     mkdir -p {config.out_dir}/reference
-    ln -s {config.rsem_index} {config.out_dir}/reference/rsem_index
+    ln -sfn {config.rsem_index} {config.out_dir}/reference/rsem_index
     exit 0
 fi
+rm -rf rsem
 mkdir -p rsem {config.out_dir}/reference
 rsem-prepare-reference --gtf {input[1]} --num-threads 12 {input[0]} rsem/genome
 mv rsem {output[0]}
@@ -1073,6 +1077,9 @@ mkdir -p {config.out_dir}/{config.aligner}/deseq2_qc
 mv deseq2.dds.RData deseq2.pca.vals.txt deseq2.plots.pdf deseq2.sample.dists.txt \\
     {config.aligner}.pca.vals_mqc.tsv {config.aligner}.sample.dists_mqc.tsv R_sessionInfo.log \\
     {config.out_dir}/{config.aligner}/deseq2_qc/
+# rm -rf first: a bare mv onto a stale dir from an earlier run era
+# fails with "File exists" when the engine re-runs this rule
+rm -rf {config.out_dir}/{config.aligner}/deseq2_qc/size_factors
 mv size_factors {config.out_dir}/{config.aligner}/deseq2_qc/
 """
 [rules.resources]
@@ -1102,7 +1109,7 @@ shell = """
 set -euo pipefail
 if [ -n "{config.salmon_index}" ]; then
     mkdir -p {config.out_dir}/reference
-    ln -s {config.salmon_index} {config.out_dir}/reference/salmon_index
+    ln -sfn {config.salmon_index} {config.out_dir}/reference/salmon_index
     exit 0
 fi
 mkdir -p {config.out_dir}/reference
@@ -1144,7 +1151,7 @@ shell = """
 set -euo pipefail
 if [ -n "{config.kallisto_index}" ]; then
     mkdir -p {config.out_dir}/reference
-    ln -s {config.kallisto_index} {config.out_dir}/reference/kallisto
+    ln -sfn {config.kallisto_index} {config.out_dir}/reference/kallisto
     exit 0
 fi
 mkdir -p {config.out_dir}/reference
@@ -1724,6 +1731,7 @@ mkdir -p {config.out_dir}/{config.pseudo_aligner}/deseq2_qc
 mv deseq2.dds.RData deseq2.pca.vals.txt deseq2.plots.pdf deseq2.sample.dists.txt \\
     {config.pseudo_aligner}.pca.vals_mqc.tsv {config.pseudo_aligner}.sample.dists_mqc.tsv R_sessionInfo.log \\
     {config.out_dir}/{config.pseudo_aligner}/deseq2_qc/
+rm -rf {config.out_dir}/{config.pseudo_aligner}/deseq2_qc/size_factors
 mv size_factors {config.out_dir}/{config.pseudo_aligner}/deseq2_qc/
 """
 [rules.resources]

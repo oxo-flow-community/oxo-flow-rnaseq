@@ -385,12 +385,13 @@ shell = """
 set -euo pipefail
 if [ -n "{config.hisat2_index}" ]; then
     mkdir -p {config.out_dir}/reference
-    ln -s {config.hisat2_index} {config.out_dir}/reference/hisat2_index
+    ln -sfn {config.hisat2_index} {config.out_dir}/reference/hisat2_index
     exit 0
 fi
 GENOME_BASE=$(basename {input[0]} .fa)
 EXONS_FILE=$(basename {input[1]} .gtf).exons.txt
 mkdir -p {config.out_dir}/reference
+rm -rf hisat2
 mkdir hisat2
 hisat2_extract_exons.py {input[1]} > ${EXONS_FILE}
 hisat2-build -p 12 --ss {input[2]} --exon ${EXONS_FILE} {input[0]} hisat2/${GENOME_BASE}
@@ -417,11 +418,12 @@ shell = """
 set -euo pipefail
 if [ -n "{config.bowtie2_index}" ]; then
     mkdir -p {config.out_dir}/reference
-    ln -s {config.bowtie2_index} {config.out_dir}/reference/bowtie2_index
+    ln -sfn {config.bowtie2_index} {config.out_dir}/reference/bowtie2_index
     exit 0
 fi
 GENOME_BASE=$(basename {input[0]} .fa)
 mkdir -p {config.out_dir}/reference
+rm -rf bowtie2
 mkdir bowtie2
 bowtie2-build --threads 12 {input[0]} bowtie2/${GENOME_BASE}
 mv bowtie2 {output[0]}
