@@ -5,6 +5,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OXO=${OXO:-oxo-flow}
 
+# The suite asserts `[run` plan states, but oxo-flow's freshness gate skips a
+# rule when its complete output set already exists on disk. results/ is
+# gitignored, so leftovers from a previous live run silently flip those
+# assertions on re-runs (CI-fresh clones are unaffected) — start every suite
+# from a clean slate.
+rm -rf results .oxo-flow logs
+
 echo "==> validate"
 "$OXO" validate main.oxoflow
 
