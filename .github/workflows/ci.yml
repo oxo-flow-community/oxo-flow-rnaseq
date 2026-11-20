@@ -11,10 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install oxo-flow (latest release tarball)
+      - name: Install oxo-flow (pinned release v0.21.1, the release behind this repos last green gate run 163; v0.31.0 when-skipped expand_inputs pruning of the MultiQC chain flagged for engine follow-up)
         run: |
           curl -fL -o oxo-flow.tar.gz \
-            https://github.com/Traitome/oxo-flow/releases/latest/download/oxo-flow-latest-x86_64-unknown-linux-gnu.tar.gz
+            https://github.com/Traitome/oxo-flow/releases/download/v0.21.1/oxo-flow-v0.21.1-x86_64-unknown-linux-gnu.tar.gz
           tar xzf oxo-flow.tar.gz
           sudo mv oxo-flow /usr/local/bin/
           oxo-flow --version

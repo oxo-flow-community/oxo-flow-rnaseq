@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Written by Lorena Pantano and revised for flexibility in handling assays.
-# oxo-flow port of nf-core/rnaseq 3.26.0
+# oxo-flow port of nf-core/rnaseq 3.28.0
 # modules/nf-core/summarizedexperiment/summarizedexperiment/templates/summarizedexperiment.r
 # (MIT). Nextflow placeholders are replaced with a CLI; the logic is otherwise
 # the upstream script. Upstream runs this process twice with ext.args
@@ -198,10 +198,25 @@ if (!is.null(opt$assay_names)){
 
 # Build and verify the main assays list for the summarisedexperiment
 
-assay_list <- lapply(matrix_files, function(m){
-    mat <- read_delim_flexible(m, row.names = 1, stringsAsFactors = FALSE)
-    mat[,sapply(mat, is.numeric), drop = FALSE]
-})
+matrices <- lapply(matrix_files, read_delim_flexible, row.names = 1, stringsAsFactors = FALSE)
+# An all-NA column (e.g. a zero-read sample after length scaling) is read as
+# logical. Keep it where another matrix has the same column as numeric, so the
+# assays stay aligned.
+numeric_cols <- unique(unlist(lapply(matrices, function(mat) names(Filter(is.numeric, mat)))))
+
+assay_list <- Map(function(mat, matrix_file){
+    is_num <- vapply(mat, is.numeric, logical(1))
+    all_na <- vapply(mat, function(x) all(is.na(x)), logical(1)) & !is_num
+    keep_na <- all_na & names(mat) %in% numeric_cols
+    if (any(all_na & !keep_na)) {
+        warning(
+            "Dropping all-NA column(s) from ", matrix_file, " that are not numeric in any input matrix: ",
+            paste(names(mat)[all_na & !keep_na], collapse = ', ')
+        )
+    }
+    mat[keep_na] <- lapply(mat[keep_na], as.numeric)
+    mat[, is_num | keep_na, drop = FALSE]
+}, matrices, matrix_files)
 
 checkRowColNames(assay_list)
 
@@ -250,4 +265,5 @@ saveRDS(se, file = output_file)
 sink(paste(prefix, "R_sessionInfo.log", sep = '.'))
 citation("SummarizedExperiment")
 print(sessionInfo())
+print(se)
 sink()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# oxo-flow port of nf-core/rnaseq 3.26.0 modules/nf-core/custom/tx2gene/templates/tx2gene.py
+# oxo-flow port of nf-core/rnaseq 3.28.0 modules/nf-core/custom/tx2gene/templates/tx2gene.py
 # (written by Lorena Pantano with subsequent reworking by Jonathan Manning, MIT).
 # The Nextflow placeholders are replaced with an argparse CLI; the mapping logic
 # is byte-for-byte the upstream script. The upstream process runs with
@@ -14,7 +14,6 @@ import os
 import re
 from collections import Counter, OrderedDict
 from collections.abc import Set
-from typing import Dict
 
 # Configure logging
 logging.basicConfig(format="%(name)s - %(asctime)s %(levelname)s: %(message)s")
@@ -88,7 +87,7 @@ def discover_transcript_attribute(gtf_file: str, transcripts: Set[str]) -> str:
     return attribute
 
 
-def parse_attributes(attributes_text: str) -> Dict[str, str]:
+def parse_attributes(attributes_text: str) -> dict[str, str]:
     """
     Parse the attributes column of a GTF file.
 

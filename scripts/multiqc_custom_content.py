@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Workflow-level MultiQC custom content for nf-core/rnaseq 3.26.0 (port of
+# Workflow-level MultiQC custom content for nf-core/rnaseq 3.28.0 (port of
 # subworkflows/local/multiqc_rnaseq/main.nf).
 #
 # Generates, into --out-dir:
@@ -50,6 +50,7 @@ TOTAL_READS_RE = re.compile(r"([\d.]+)\ssequences processed in total")
 FILTERED_READS_RE = re.compile(r"shorter than the length cutoff[^:]+:\s*([\d.]+)")
 UNIQUELY_MAPPED_RE = re.compile(r"Uniquely mapped reads %\s*\|\s*([\d.]+)%")
 BOWTIE2_OVERALL_ALIGNMENT_RE = re.compile(r"(\d+\.\d+)% overall alignment rate")
+HISAT2_OVERALL_ALIGNMENT_RE = re.compile(r"Overall alignment rate:\s*([\d.]+)%")
 
 INFER_RE = [
     re.compile(r"Fraction of reads failed to determine:\s([\d.]+)"),
@@ -164,7 +165,7 @@ def multiqc_sample_merge_yaml_pattern(sample_id, read):
 
 N_A_SPAN = '<span style="color:#999999;">N/A</a>'
 
-# Upstream methods_description_mqc.template.yaml (nf-core/rnaseq 3.26.0),
+# Upstream methods_description_mqc.template.yaml (nf-core/rnaseq 3.28.0),
 # verbatim including the ${workflow.*} / ${tool_*} placeholders.
 METHODS_TEMPLATE = """<h4>Methods</h4>
 <p>Data was processed using nf-core/rnaseq v${workflow.manifest.version} ${doi_text} of the nf-core collection of workflows (<a href="https://doi.org/10.1038/s41587-020-0439-x">Ewels <em>et al.</em>, 2020</a>), utilising reproducible software environments from the Bioconda (<a href="https://doi.org/10.1038/s41592-018-0046-7">Grüning <em>et al.</em>, 2018</a>) and Biocontainers (<a href="https://doi.org/10.1093/bioinformatics/btx192">da Veiga Leprevost <em>et al.</em>, 2017</a>) projects.</p>
@@ -463,7 +464,7 @@ def workflow_summary_yaml(summary_params):
 
 def methods_description_yaml(engine_version, command_line):
     """Port of methodsDescriptionText: the upstream template rendered against
-    the oxo-flow engine (pipeline version 3.26.0, engine version, invocation).
+    the oxo-flow engine (pipeline version 3.28.0, engine version, invocation).
     The port metadata has no pipeline DOI yet, so doi_text is empty and the
     no-DOI note is kept. tool_citations / tool_bibliography stay placeholders
     (upstream fills them from the process directives, which the port does not
@@ -474,7 +475,7 @@ def methods_description_yaml(engine_version, command_line):
     tool_bibliography = ""
     data = METHODS_TEMPLATE
     data = data.replace("${doi_text}", doi_text)
-    data = data.replace("${workflow.manifest.version}", "3.26.0")
+    data = data.replace("${workflow.manifest.version}", "3.28.0")
     data = data.replace("${workflow.nextflow.version}", engine_version)
     data = data.replace("${workflow.commandLine}", command_line)
     data = data.replace("${tool_citations}", tool_citations)
@@ -556,6 +557,12 @@ def main():
     for sid in samples:
         log = os.path.join(os.path.dirname(args.out_dir), args.aligner, "log", f"{sid}.Log.final.out")
         star_log = os.path.exists(log)
+        hisat2_log = os.path.join(os.path.dirname(args.out_dir), args.aligner, "log", f"{sid}.hisat2.summary.log")
+        if not star_log and not os.path.exists(log) and args.aligner == "hisat2" and os.path.exists(hisat2_log):
+            # upstream 3.28 getHisat2PercentMapped (subworkflows/local/utils_nfcore_rnaseq_pipeline/main.nf):
+            # feeds the HISAT2 summary log
+            # ("Overall alignment rate: <x>%") into the same fail_mapped table.
+            log = hisat2_log
         if not star_log:
             # bowtie2_salmon: upstream ALIGN_BOWTIE2 emits {id}.bowtie2.log
             # ("N% overall alignment rate") and the multiqc_rnaseq subworkflow
@@ -570,6 +577,8 @@ def main():
             m = UNIQUELY_MAPPED_RE.search(line)
             if not m and not star_log:
                 m = BOWTIE2_OVERALL_ALIGNMENT_RE.search(line)
+            if not m and not star_log and log.endswith(".hisat2.summary.log"):
+                m = HISAT2_OVERALL_ALIGNMENT_RE.search(line)
             if m:
                 percent = float(m.group(1))
         if percent is not None and percent < args.min_mapped_reads:
@@ -578,7 +587,16 @@ def main():
         header_text = f.read()
     with open(os.path.join(args.out_dir, "fail_mapped_samples_mqc.tsv"), "w") as f:
         f.write(header_text)
-        f.write("Sample\tSTAR uniquely mapped reads (%)\n")
+        # 3.28.0: upstream passes an aligner_display_name into the MultiQC
+        # fail_mapped row so the column matches the active aligner's General
+        # Statistics column (was hardcoded STAR text pre-3.28).
+        display = {
+            "star_salmon": "STAR uniquely mapped reads",
+            "star_rsem": "STAR uniquely mapped reads",
+            "hisat2": "HISAT2 overall alignment rate",
+            "bowtie2_salmon": "Bowtie2 overall alignment rate",
+        }.get(args.aligner, "Aligned reads")
+        f.write(f"Sample\t{display} (%)\n")
         for row in mapped_rows:
             f.write(row)
 
@@ -679,27 +697,27 @@ def main():
     # Static version manifest matching the envs/*.yaml pins (upstream merged
     # mode collates per-process versions.yml at runtime instead).
     versions = {
-        "FASTQC": {"fastqc": "0.12.1"},
-        "TRIMGALORE": {"trim-galore": "2.1.0"},
+        "FASTQC": {"fastqc": "0.13.0"},
+        "TRIMGALORE": {"trim-galore": "2.3.0"},
         "FQ_LINT": {"fq": "0.12.0"},
         "FQ_LINT_AFTER_TRIMMING": {"fq": "0.12.0"},
         "STAR_ALIGN": {"star": "2.7.11b", "samtools": "1.21", "htslib": "1.21", "gawk": "5.1.0"},
-        "SAMTOOLS_SORT": {"samtools": "1.23.1", "htslib": "1.23.1"},
-        "SAMTOOLS_INDEX": {"samtools": "1.23.1", "htslib": "1.23.1"},
-        "SAMTOOLS_STATS": {"samtools": "1.23.1", "htslib": "1.23.1"},
-        "SAMTOOLS_FLAGSTAT": {"samtools": "1.23.1", "htslib": "1.23.1"},
-        "SAMTOOLS_IDXSTATS": {"samtools": "1.23.1", "htslib": "1.23.1"},
-        "PICARD_MARKDUPLICATES": {"picard": "3.4.0"},
-        "HISAT2_ALIGN": {"hisat2": "2.2.1", "samtools": "1.20"},
+        "SAMTOOLS_SORT": {"samtools": "1.25", "htslib": "1.25"},
+        "SAMTOOLS_INDEX": {"samtools": "1.25", "htslib": "1.25"},
+        "SAMTOOLS_STATS": {"samtools": "1.25", "htslib": "1.25"},
+        "SAMTOOLS_FLAGSTAT": {"samtools": "1.25", "htslib": "1.25"},
+        "SAMTOOLS_IDXSTATS": {"samtools": "1.25", "htslib": "1.25"},
+        "PICARD_MARKDUPLICATES": {"picard": "3.5.0"},
+        "HISAT2_ALIGN": {"hisat2": "2.2.3", "samtools": "1.24"},
         "BBMAP_BBSPLIT": {"bbmap": "39.18"},
         "SORTMERNA": {"sortmerna": "4.3.7"},
-        "BOWTIE2_ALIGN": {"bowtie2": "2.5.4", "htslib": "1.21", "samtools": "1.21"},
+        "BOWTIE2_ALIGN": {"bowtie2": "2.5.5", "htslib": "1.24", "samtools": "1.24"},
         "RSEM_CALCULATEEXPRESSION": {"rsem": "1.3.3"},
         "UMITOOLS_EXTRACT": {"umi_tools": "1.1.6", "pysam": "0.22.0"},
         "UMITOOLS_DEDUP": {"umi_tools": "1.1.6", "pysam": "0.22.0"},
         "UMITOOLS_PREPAREFORRSEM": {"umi_tools": "1.1.6", "pysam": "0.22.0"},
         "UMICOLLAPSE": {"umicollapse": "1.1.0"},
-        "SUBREAD_FEATURECOUNTS": {"subread": "2.0.6"},
+        "SUBREAD_FEATURECOUNTS": {"subread": "2.1.1"},
         "CUSTOM_MULTIQCCUSTOMBIOTYPE": {"python": "3.12.12"},
         "RSEQC_BAMSTAT": {"rseqc": "5.0.4", "r-base": "4.3"},
         "RSEQC_INFEREXPERIMENT": {"rseqc": "5.0.4", "r-base": "4.3"},
@@ -709,14 +727,14 @@ def main():
         "RSEQC_READDISTRIBUTION": {"rseqc": "5.0.4", "r-base": "4.3"},
         "RSEQC_READDUPLICATION": {"rseqc": "5.0.4", "r-base": "4.3"},
         "DUPRADAR": {"bioconductor-dupradar": "1.38.0"},
-        "SAMTOOLS_SORT_QUALIMAP": {"samtools": "1.23.1", "htslib": "1.23.1"},
+        "SAMTOOLS_SORT_QUALIMAP": {"samtools": "1.25", "htslib": "1.25"},
         "QUALIMAP_RNASEQ": {"qualimap": "2.3"},
         "BEDTOOLS_GENOMECOV_FW": {"bedtools": "2.31.1"},
         "BEDTOOLS_GENOMECOV_REV": {"bedtools": "2.31.1"},
         "BEDTOOLS_GENOMECOV_COMBINED": {"bedtools": "2.31.1"},
-        "UCSC_BEDCLIP": {"ucsc-bedclip": "377"},
-        "UCSC_BEDGRAPHTOBIGWIG": {"ucsc-bedgraphtobigwig": "469"},
-        "MULTIQC": {"multiqc": "1.33"},
+        "UCSC_BEDCLIP": {"ucsc-bedclip": "482"},
+        "UCSC_BEDGRAPHTOBIGWIG": {"ucsc-bedgraphtobigwig": "482"},
+        "MULTIQC": {"multiqc": "1.35"},
     }
     with open(os.path.join(args.out_dir, "nf_core_rnaseq_software_mqc_versions.yml"), "w") as f:
         f.write("# Software versions for this run (pinned in envs/*.yaml)\n")

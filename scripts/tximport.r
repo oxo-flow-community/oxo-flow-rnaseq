@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript --vanilla
 
 # Script for importing and processing transcript-level quantifications.
-# oxo-flow port of nf-core/rnaseq 3.26.0
+# oxo-flow port of nf-core/rnaseq 3.28.0
 # modules/nf-core/tximeta/tximport/templates/tximport.r
 # (written by Lorena Pantano, later modified by Jonathan Manning, MIT).
 # The Nextflow placeholders are replaced with an argparse-style CLI; the
@@ -10,6 +10,11 @@
 # defaults transcript_id/gene_id/gene_name).
 
 # Loading required libraries
+# tximport::summarizeToGene() reorders gene-level output rows via base R's
+# rowsum(reorder=TRUE), which sorts by the process locale's collation order.
+# Fix LC_COLLATE so row order (and therefore output content) is reproducible
+# across execution environments regardless of their default locale.
+Sys.setlocale("LC_COLLATE", "C")
 library(SummarizedExperiment)
 library(tximport)
 
