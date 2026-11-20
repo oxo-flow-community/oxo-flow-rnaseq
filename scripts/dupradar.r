@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # DupRadar duplication-rate QC for nf-core/rnaseq (port of
-# modules/nf-core/dupradar/templates/dupradar.r @ 3.26.0).
+# modules/nf-core/dupradar/templates/dupradar.r @ 3.28.0).
 #
 # Written by Phil Ewels and released under the MIT license.
 # Ported to nf-core/modules with template by Jonathan Manning.
@@ -41,7 +41,15 @@ library("dupRadar")
 library("parallel")
 
 # Duplicate stats
-dm <- analyzeDuprates(input_bam, annotation_gtf, stranded, paired_end, threads, GTF.featureType = feature_type, verbose = TRUE)
+tmp_dir <- Sys.getenv("TMP_DIR")
+if (is.null(tmp_dir) || tmp_dir == "") tmp_dir <- "."
+if (!dir.exists(tmp_dir)) {
+    dir.create(tmp_dir, recursive = TRUE)
+}
+if (!dir.exists(tmp_dir) || file.access(tmp_dir, mode = 2) != 0) {
+    stop("tmp_dir '", tmp_dir, "' does not exist or is not writable")
+}
+dm <- analyzeDuprates(input_bam, annotation_gtf, stranded, paired_end, threads, GTF.featureType = feature_type, verbose = TRUE, tmpDir = tmp_dir)
 write.table(dm, file=paste(output_prefix, "_dupMatrix.txt", sep=""), quote=F, row.name=F, sep="\t")
 
 # 2D density scatter plot

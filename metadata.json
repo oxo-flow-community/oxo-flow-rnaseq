@@ -7,12 +7,12 @@
   "source": {
     "repo": "nf-core/rnaseq",
     "url": "https://github.com/nf-core/rnaseq",
-    "tag": "3.26.0",
-    "sha": "e7ca46272c8f9d5ceee3f71759f4ba551d3217a4",
+    "tag": "3.28.0",
+    "sha": "f24c6c0e9469d04975d87c3a8bf9020800978782",
     "license": "MIT"
   },
   "created": "2026-08-15",
-  "updated": "2026-09-07",
+  "updated": "2026-11-20",
   "domain": "transcriptomics",
   "tags": [
     "rna-seq",
@@ -55,6 +55,7 @@
     "bowtie2_align_sortmerna",
     "bowtie2_index",
     "bowtie2_rrna_index",
+    "bracken",
     "cat_reads",
     "chrom_sizes",
     "deseq2_qc",
@@ -98,6 +99,7 @@
     "kallisto_quant_pseudo_bowtie2",
     "kallisto_quant_pseudo_ribodetector",
     "kallisto_quant_pseudo_sortmerna",
+    "kraken2",
     "multiqc",
     "multiqc_custom_content",
     "multiqc_pseudo",
@@ -171,6 +173,8 @@
     "summarizedexperiment",
     "summarizedexperiment_pseudo",
     "summarizedexperiment_rsem",
+    "sylph_profile",
+    "sylphtax_taxprof",
     "transcript_fasta",
     "trimgalore",
     "trimgalore_umi",
@@ -229,10 +233,10 @@
     "umi_tools",
     "umicollapse"
   ],
-  "description": "End-to-end bulk RNA-seq analysis for paired-end reads: fq lint and FastQC raw-read QC, TrimGalore adapter/quality trimming (including the UMI-extraction path), STAR, HISAT2 and Bowtie2-transcriptome (bowtie2_salmon) alignment with the BBSplit / SortMeRNA / Bowtie2 / Ribodetector rRNA-filtered read variants, Picard MarkDuplicates or UMI-tools / UMICollapse dedup (genome and transcriptome chains), Salmon quantification in alignment mode (STAR and Bowtie2 orig_bams, raw and UMI-prepared) and pseudo-alignment mode (Salmon or Kallisto), RSEM alignment-mode quantification with per-sample results and merged count tables, tximport-merged gene/transcript count tables with SummarizedExperiment R objects, StringTie reference-guided assembly and quantification, featureCounts gene counts with biotype tables, RSeQC / dupRadar / Qualimap QC, DESeq2 sample-level QC (PCA, sample distances, size factors) per quantification branch, strand-specific bigWig tracks, and one final MultiQC report with the nf-core/rnaseq custom content (fail_trimmed / fail_mapped tables, strandedness checks, software versions). A faithful port of the nf-core/rnaseq 3.26.0 default star_salmon path plus the star_rsem, hisat2, bowtie2_salmon, with_umi, salmon-pseudo, kallisto-pseudo and ribodetector rRNA-removal branches — same tools, same versions, same commands.",
+  "description": "End-to-end bulk RNA-seq analysis for paired-end reads: fq lint and FastQC raw-read QC, TrimGalore adapter/quality trimming (including the UMI-extraction path), STAR, HISAT2 and Bowtie2-transcriptome (bowtie2_salmon) alignment with the BBSplit / SortMeRNA / Bowtie2 / Ribodetector rRNA-filtered read variants, Picard MarkDuplicates or UMI-tools / UMICollapse dedup (genome and transcriptome chains), Salmon quantification in alignment mode (STAR and Bowtie2 orig_bams, raw and UMI-prepared) and pseudo-alignment mode (Salmon or Kallisto), RSEM alignment-mode quantification with per-sample results and merged count tables, tximport-merged gene/transcript count tables with SummarizedExperiment R objects, StringTie reference-guided assembly and quantification, featureCounts gene counts with biotype tables, RSeQC / dupRadar / Qualimap QC, DESeq2 sample-level QC (PCA, sample distances, size factors) per quantification branch, strand-specific bigWig tracks, and one final MultiQC report with the nf-core/rnaseq custom content (fail_trimmed / fail_mapped tables, strandedness checks, software versions). A faithful port of the nf-core/rnaseq 3.28.0 default star_salmon path plus the star_rsem, hisat2, bowtie2_salmon, with_umi, salmon-pseudo, kallisto-pseudo and ribodetector rRNA-removal branches \u2014 same tools, same versions, same commands.",
   "installation": {
     "engine": "oxo-flow >= 0.17.0",
-    "toolchain": "conda envs — pinned (envs/*.yaml, versions pinned to the upstream nf-core/rnaseq 3.26.0 module environments; requires conda or mamba)",
+    "toolchain": "conda envs \u2014 pinned (envs/*.yaml, versions pinned to the upstream nf-core/rnaseq 3.28.0 module environments; requires conda or mamba)",
     "requirements": [
       "paired-end FASTQ reads: reads_dir/<sample>_R1.fastq.gz + _R2.fastq.gz, cohort declared in [[sample_groups]]",
       "reference genome FASTA (uncompressed)",

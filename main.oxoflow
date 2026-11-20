@@ -1,7 +1,7 @@
-# oxo-flow port of nf-core/rnaseq 3.26.0 (default-parameters main path).
+# oxo-flow port of nf-core/rnaseq 3.28.0 (default-parameters main path).
 #
-# Upstream: https://github.com/nf-core/rnaseq @ 3.26.0
-#   (sha e7ca46272c8f9d5ceee3f71759f4ba551d3217a4)
+# Upstream: https://github.com/nf-core/rnaseq @ 3.28.0
+#   (sha f24c6c0e9469d04975d87c3a8bf9020800978782)
 # Default path: FastQC -> TrimGalore -> fq lint -> STAR align -> Picard mark
 #   duplicates -> Salmon quant (alignment mode) -> tximport merged counts +
 #   SummarizedExperiment RDS -> StringTie assembly/quant -> featureCounts gene
