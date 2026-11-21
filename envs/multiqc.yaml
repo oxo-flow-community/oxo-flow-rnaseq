@@ -1,7 +1,9 @@
 # Environment for MultiQC and the workflow-level custom-content script —
-# pinned exactly to the upstream nf-core/rnaseq 3.28.0 module environment
-# (modules/nf-core/multiqc/environment.yml). python is pinned so the custom
-# content script (scripts/multiqc_custom_content.py) runs on a known
+# the multiqc pin is exact to the upstream nf-core/rnaseq 3.28.0 module
+# environment (modules/nf-core/multiqc/environment.yml: multiqc=1.35; the
+# 3.26.0 tag pinned 1.33). python and rich are port-carried additions, not
+# tag-sourced (see the README exceptions table): python is pinned so the
+# custom content script (scripts/multiqc_custom_content.py) runs on a known
 # interpreter; pyyaml is a MultiQC dependency.
 name: multiqc
 channels:

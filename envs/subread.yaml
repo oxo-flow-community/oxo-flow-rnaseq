@@ -1,6 +1,8 @@
-# Environment for featureCounts — pinned exactly to the upstream
-# nf-core/rnaseq 3.26.0 module environment
-# (modules/nf-core/subread/featurecounts/environment.yml).
+# Environment for featureCounts — port-retained 3.26.0-era pin:
+# subread=2.0.6 matches the upstream nf-core/rnaseq 3.26.0 module
+# environment (modules/nf-core/subread/featurecounts/environment.yml);
+# the 3.28.0 tag bumped this pin to 2.1.1, which the synced port keeps
+# at its 3.26.0-era value.
 name: subread
 channels:
   - conda-forge

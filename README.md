@@ -83,7 +83,7 @@ node capacity accordingly.
 declares `[rules.environment] conda = "envs/<tool>.yaml"` (37 environments
 in `envs/`), with each package version pinned exactly to the upstream
 nf-core/rnaseq 3.28.0 module environment (e.g. `star=2.7.11b`,
-`salmon=1.10.3`, `multiqc=1.33`). No containers are used — you need conda or
+`salmon=2.11.0`, `multiqc=1.35`). No containers are used — you need conda or
 mamba to create and activate these environments.
 
 ## Usage
