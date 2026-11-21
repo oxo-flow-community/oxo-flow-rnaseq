@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Ported from the nf-core/rnaseq 3.26.0 CUSTOM_GTFFILTER template
+# Ported from the nf-core/rnaseq 3.28.0 CUSTOM_GTFFILTER template
 # (modules/nf-core/custom/gtffilter/templates/gtffilter.py).
 
 # Written by Olga Botvinnik with subsequent reworking by Jonathan Manning and Nico Trummer.

@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 SALMON_QUANT module
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0 SALMON_QUANT module
 # environment (modules/nf-core/salmon/quant/environment.yml).
 name: salmon
 channels:

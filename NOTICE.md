@@ -2,7 +2,7 @@ oxo-flow-rnaseq
 Copyright (c) 2026 oxo-flow-community
 
 This pipeline is a port of nf-core/rnaseq
-(https://github.com/nf-core/rnaseq), version 3.26.0, authored by
+(https://github.com/nf-core/rnaseq), version 3.28.0, authored by
 The nf-core/rnaseq team.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ Upstream license
 This port is derived from nf-core/rnaseq under the MIT license.
 The upstream LICENSE is included verbatim in this repository at
 LICENSE.upstream (fetched from the upstream repository at the ported
-commit e7ca46272c8f9d5ceee3f71759f4ba551d3217a4, tag 3.26.0).
+commit f24c6c0e9469d04975d87c3a8bf9020800978782, tag 3.28.0).
 (Apache-2.0 §4(d): attribution notices from the Source form must be
 retained.)
 ---------------------------------------------------------------------

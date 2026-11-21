@@ -470,7 +470,7 @@ def methods_description_yaml(engine_version, command_line):
     (upstream fills them from the process directives, which the port does not
     capture)."""
     doi_text = ""
-    nodoi_text = '        <li>If you used nf-core/rnaseq for your analysis please cite it as above and reference the pipeline version 3.26.0.</li>\n'
+    nodoi_text = '        <li>If you used nf-core/rnaseq for your analysis please cite it as above and reference the pipeline version 3.28.0.</li>\n'
     tool_citations = ""
     tool_bibliography = ""
     data = METHODS_TEMPLATE

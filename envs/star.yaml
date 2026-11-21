@@ -1,5 +1,5 @@
 # Environment for STAR alignment — pinned exactly to the upstream
-# nf-core/rnaseq 3.26.0 module environment (modules/nf-core/star/align/environment.yml).
+# nf-core/rnaseq 3.28.0 module environment (modules/nf-core/star/align/environment.yml).
 name: star
 channels:
   - conda-forge

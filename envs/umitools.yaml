@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 UMITOOLS_DEDUP module
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0 UMITOOLS_DEDUP module
 # environment (modules/nf-core/umitools/dedup/environment.yml); the extract
 # and prepare-for-rsem modules pin the same umi_tools/pysam versions.
 name: umitools

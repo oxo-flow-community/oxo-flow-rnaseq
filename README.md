@@ -1,6 +1,6 @@
 # oxo-flow-rnaseq — RNA-seq: alignment, quantification and QC
 
-> ★ Verified · ⇄ Official port of [`nf-core/rnaseq`](https://github.com/nf-core/rnaseq) @ `3.26.0` — same tools, same versions, same commands. Part of the [oxo-flow-community catalog](https://oxo-flow-community.github.io/).
+> ★ Verified · ⇄ Official port of [`nf-core/rnaseq`](https://github.com/nf-core/rnaseq) @ `3.28.0` — same tools, same versions, same commands. Part of the [oxo-flow-community catalog](https://oxo-flow-community.github.io/).
 
 Run a complete bulk RNA-seq analysis on paired-end reads: FastQC and fq lint
 raw-read QC, TrimGalore adapter/quality trimming, STAR alignment, Picard
@@ -11,7 +11,7 @@ counts, RSeQC / dupRadar / Qualimap QC, DESeq2 sample-level QC (PCA, sample
 distances, size factors), strand-specific bigWig tracks, and one final
 MultiQC report with the nf-core/rnaseq custom content. The pipeline follows
 the upstream default path (aligner `star_salmon`, trimmer `trimgalore`),
-with every tool and command pinned to nf-core/rnaseq 3.26.0 — from raw
+with every tool and command pinned to nf-core/rnaseq 3.28.0 — from raw
 FASTQs to a single report with gene counts, transcript-level quantification
 and per-sample QC.
 
@@ -82,7 +82,7 @@ node capacity accordingly.
 **Tool delivery:** conda environments with pinned versions. Every rule
 declares `[rules.environment] conda = "envs/<tool>.yaml"` (37 environments
 in `envs/`), with each package version pinned exactly to the upstream
-nf-core/rnaseq 3.26.0 module environment (e.g. `star=2.7.11b`,
+nf-core/rnaseq 3.28.0 module environment (e.g. `star=2.7.11b`,
 `salmon=1.10.3`, `multiqc=1.33`). No containers are used — you need conda or
 mamba to create and activate these environments.
 
@@ -368,8 +368,8 @@ the merged tables/SE RDS are named `kallisto.merged.*` / `kallisto.*.rds`.
 
 ## Source
 
-Upstream: [`nf-core/rnaseq`](https://github.com/nf-core/rnaseq) @ `3.26.0`
-(commit `e7ca46272c8f9d5ceee3f71759f4ba551d3217a4`), licensed MIT. Created
+Upstream: [`nf-core/rnaseq`](https://github.com/nf-core/rnaseq) @ `3.28.0`
+(commit `f24c6c0e9469d04975d87c3a8bf9020800978782`), licensed MIT. Created
 2026-08-15; this workflow may lag behind upstream releases. See `NOTICE.md`
 for upstream attribution and the licensing of copied files.
 
@@ -383,7 +383,7 @@ the exact upstream conda version (see `envs/`).
 
 Known, documented deviations:
 
-| # | upstream (3.26.0) | port | reason |
+| # | upstream (3.28.0) | port | reason |
 |---|---|---|---|
 | 1 | Per-sample strandedness from the samplesheet (`auto` supported) | Ported via a `metadata_file` `strandedness` column: `forward` / `reverse` / `unstranded` resolve per sample, empty / `auto` / missing cells fall back to `config.strandedness`, bigWig FW/REV rules prune per sample at plan time | `auto` resolves to the pipeline-level value instead of a Salmon `--libType A` inference run; runs without a `metadata_file` keep the previous single-config behavior |
 | 2 | `PREPARE_GENOME` derives the reference artifacts (gene_bed via EAUTILS_GTF2BED, chrom_sizes via SAMTOOLS_FAIDX, transcript_fasta via RSEM_PREPAREREFERENCE) and builds the branch indexes (STAR / HISAT2 / RSEM / Salmon) | The artifact derivations are ported as `prepare_genome::gene_bed` / `chrom_sizes` / `transcript_fasta` builder rules (empty config key = derive from fasta + gtf like upstream; non-empty key = the user path is symlinked in); the index builders: STAR via the `[[references]]` builder, HISAT2 / RSEM / Salmon / Bowtie2 / Kallisto via when-gated builder rules | The GTF preprocessing chain is ported (CUSTOM_GTFFILTER with the upstream `filter_gtf_needed` gate, gffread GFF→GTF, additional_fasta transgenes, GENCODE preprocessing, `.gz` references — see `modules/prepare_genome.oxoflow`); fasta and gtf remain required inputs; user-supplied `bbsplit_index` / `sortmerna_index` paths are staged into the canonical dir like upstream `UNTAR_BBSPLIT_INDEX` / `UNTAR_SORTMERNA_INDEX` (`.tar.gz`/`.tgz`/`.tar` archives untarred, directories symlinked) |

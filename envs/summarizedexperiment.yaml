@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0
 # SUMMARIZEDEXPERIMENT_SUMMARIZEDEXPERIMENT module environment
 # (modules/nf-core/summarizedexperiment/summarizedexperiment/environment.yml).
 name: summarizedexperiment

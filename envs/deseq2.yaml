@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 local DESEQ2_QC module
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0 local DESEQ2_QC module
 # environment (modules/local/deseq2_qc/environment.yml).
 name: deseq2
 channels:
