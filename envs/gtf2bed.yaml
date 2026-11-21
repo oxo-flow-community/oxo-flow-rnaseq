@@ -1,5 +1,7 @@
 # Pinned exactly to the upstream nf-core/rnaseq 3.28.0 EAUTILS_GTF2BED module
-# environment (modules/nf-core/ea-utils/gtf2bed/environment.yml).
+# environment (modules/nf-core/eautils/gtf2bed/environment.yml; the module
+# directory is spelled ea-utils up to 3.26.0 and eautils at 3.28.0 — the
+# perl=5.26.2 pin is identical in both).
 name: gtf2bed
 channels:
   - conda-forge

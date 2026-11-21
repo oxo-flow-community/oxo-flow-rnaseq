@@ -1,6 +1,9 @@
-# Environment for bedClip and bedGraphToBigWig — pinned exactly to the
-# upstream nf-core/rnaseq 3.26.0 module environments
-# (modules/nf-core/ucsc/bedclip + bedgraphtobigwig/environment.yml).
+# Environment for bedClip and bedGraphToBigWig — split pin provenance:
+# bedclip follows the upstream nf-core/rnaseq 3.28.0 environment
+# (modules/nf-core/ucsc/bedclip/environment.yml: ucsc-bedclip=482; the
+# 3.26.0 tag pinned 377), while bedgraphtobigwig keeps its 3.26.0-era pin
+# (modules/nf-core/ucsc/bedgraphtobigwig/environment.yml: =469; the
+# 3.28.0 tag bumped it to 482).
 name: ucsc
 channels:
   - conda-forge
