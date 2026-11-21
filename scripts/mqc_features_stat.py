@@ -6,7 +6,7 @@
 # Written by Senthilkumar Panneerselvam and released under the MIT license.
 # Adapted for nf-core/modules by Jonathan Manning.
 # oxo-flow port of modules/nf-core/custom/multiqccustombiotype/
-# templates/mqc_features_stat.py @ nf-core/rnaseq 3.26.0: the Nextflow
+# templates/mqc_features_stat.py @ nf-core/rnaseq 3.28.0: the Nextflow
 # template variables are supplied as positional arguments
 #   mqc_features_stat.py <count_file> <header_file> <sample_id> <out_dir>
 # and the versions.yml block is not written (versions are pinned in

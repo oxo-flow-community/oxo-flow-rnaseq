@@ -1,5 +1,5 @@
 # Environment for bedtools genomecov — pinned exactly to the upstream
-# nf-core/rnaseq 3.26.0 module environment (modules/nf-core/bedtools/genomecov/environment.yml).
+# nf-core/rnaseq 3.28.0 module environment (modules/nf-core/bedtools/genomecov/environment.yml).
 name: bedtools
 channels:
   - conda-forge

@@ -22,7 +22,7 @@
 #
 # ALSO, IT WOULD BE NICE IF YOU LET ME KNOW YOU USED IT.
 
-# Ported from nf-core/rnaseq 3.26.0
+# Ported from nf-core/rnaseq 3.28.0
 # (modules/nf-core/ea-utils/gtf2bed/templates/gtf2bed.pl, MIT). The Nextflow
 # template variables are replaced by command-line arguments: ARGV[0] = input
 # GTF (optionally .gz/.zip), ARGV[1] = output prefix (writes <ARGV[1]>.bed).

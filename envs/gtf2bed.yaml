@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 EAUTILS_GTF2BED module
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0 EAUTILS_GTF2BED module
 # environment (modules/nf-core/ea-utils/gtf2bed/environment.yml).
 name: gtf2bed
 channels:

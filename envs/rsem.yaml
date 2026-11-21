@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 RSEM modules
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0 RSEM modules
 # environment (modules/nf-core/rsem/calculateexpression/environment.yml).
 name: rsem
 channels:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Ported from the nf-core/rnaseq 3.26.0 CUSTOM_CATADDITIONALFASTA template
+# Ported from the nf-core/rnaseq 3.28.0 CUSTOM_CATADDITIONALFASTA template
 # (modules/nf-core/custom/catadditionalfasta/templates/fasta2gtf.py).
 
 # Written by Pranathi Vemuri, later modified by Jonathan Manning and released under the MIT license.

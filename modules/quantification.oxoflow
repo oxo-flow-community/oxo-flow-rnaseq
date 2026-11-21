@@ -1,4 +1,4 @@
-# Quantification fragment of the nf-core/rnaseq 3.26.0 default path
+# Quantification fragment of the nf-core/rnaseq 3.28.0 default path
 # (subworkflows/nf-core/quantify_bam_salmon + quantify_tximport_summarizedexperiment).
 #
 # Upstream process labels: SALMON_QUANT / STRINGTIE_STRINGTIE / TXIMETA_TXIMPORT

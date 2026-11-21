@@ -1,5 +1,5 @@
 # Environment for samtools sort/index/stats/flagstat/idxstats — pinned exactly
-# to the upstream nf-core/rnaseq 3.26.0 module environments
+# to the upstream nf-core/rnaseq 3.28.0 module environments
 # (modules/nf-core/samtools/*/environment.yml).
 name: samtools
 channels:

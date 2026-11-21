@@ -1,5 +1,5 @@
 # Environment for FastQC — pinned exactly to the upstream nf-core/rnaseq
-# 3.26.0 module environment (modules/nf-core/fastqc/environment.yml).
+# 3.28.0 module environment (modules/nf-core/fastqc/environment.yml).
 name: fastqc
 channels:
   - conda-forge

@@ -1,5 +1,5 @@
 # Environment for the reference-chain Python scripts (gtffilter.py,
-# fasta2gtf.py; stdlib-only). Pinned to the upstream nf-core/rnaseq 3.26.0
+# fasta2gtf.py; stdlib-only). Pinned to the upstream nf-core/rnaseq 3.28.0
 # module environments (custom/catadditionalfasta python=3.12.2, custom/gtffilter python=3.14.5 — the merged env follows the newer gtffilter pin (both only need the stdlib)).
 name: python
 channels:

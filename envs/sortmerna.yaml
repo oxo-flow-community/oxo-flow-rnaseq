@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 SORTMERNA module
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0 SORTMERNA module
 # environment (modules/nf-core/sortmerna/environment.yml).
 name: sortmerna
 channels:

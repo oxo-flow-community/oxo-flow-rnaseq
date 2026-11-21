@@ -1,4 +1,4 @@
-# Pinned exactly to the upstream nf-core/rnaseq 3.26.0 STRINGTIE_STRINGTIE
+# Pinned exactly to the upstream nf-core/rnaseq 3.28.0 STRINGTIE_STRINGTIE
 # module environment (modules/nf-core/stringtie/stringtie/environment.yml).
 name: stringtie
 channels:

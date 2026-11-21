@@ -1,4 +1,4 @@
-# Contaminant screening (nf-core/rnaseq 3.26.0) — the optional taxonomic QC
+# Contaminant screening (nf-core/rnaseq 3.28.0) — the optional taxonomic QC
 # branch of the workflow (upstream workflows/rnaseq/main.nf:
 #   params.contaminant_screening in ['kraken2', 'kraken2_bracken', 'sylph']
 #   and !params.skip_qc, reading ch_contaminant_sequences selected by
@@ -14,7 +14,7 @@
 
 [workflow]
 name = "oxo-flow-rnaseq-contaminant-screening"
-description = "nf-core/rnaseq 3.26.0 contaminant screening branch (Kraken2/Bracken or Sylph; gated on config.contaminant_screening)"
+description = "nf-core/rnaseq 3.28.0 contaminant screening branch (Kraken2/Bracken or Sylph; gated on config.contaminant_screening)"
 
 # ---------------------------------------------------------------------------
 # KRAKEN2 (kraken2 2.1.6). Upstream call: kraken2 --db <db> --threads N

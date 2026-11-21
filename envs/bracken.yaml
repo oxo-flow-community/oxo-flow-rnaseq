@@ -1,6 +1,6 @@
 ---
 # Environment for bracken — pinned exactly to the upstream
-# nf-core/rnaseq 3.26.0 module environment.
+# nf-core/rnaseq 3.28.0 module environment.
 name: bracken
 channels:
   - conda-forge
